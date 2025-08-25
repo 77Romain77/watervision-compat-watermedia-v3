@@ -1,11 +1,11 @@
-# WaterVision
-WaterVision, a cool mod that ```[REDACTED]```
+# WHAT ITS WATERVISION?
+Watervision its my brand new mod that [REDACTED]
 
-Hoever, the mod is still in its early stages of development, until the version 3 of
-watermedia got released.
+For now, its a temporal replacement of the VideoPlayer mod,
+which let you play full screen videos in your game using commands. 
+Powered by WATERMeDIA and VLC
 
-At this moment, it only implements side-features such as a Video Player command, as a 
-temporal replacement of the mod VideoPlayer
+Not affiliated with Mr.Puzzle or PuzzleVision
 
 # USAGE
 This mod adds 2 commands
@@ -36,11 +36,11 @@ This mod adds 2 commands
 # LOADING ANIMATION
 The loading animation its provided by the WATERMeDIA API, and can be customized to place your own file by 
 adding it in the following path:
-`<minecraft folder>/mods/watermedia/assets/watervision/loading.gif`
+`<minecraft folder>/config/watermedia/assets/watervision/loading.gif`
 
 If the file is not found, it will use the default one, which can be also customized to place your own file by
 adding it in the following path:
-`<minecraft folder>/mods/watermedia/assets/loading.gif`
+`<minecraft folder>/config/watermedia/assets/loading.gif`
 NOTE: Customizing the default one will affect all the mods that use the WATERMeDIA API
 
 
