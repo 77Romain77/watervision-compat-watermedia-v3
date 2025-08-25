@@ -118,9 +118,6 @@ public class VisionScreen extends Screen {
     }
 
     @Override
-    public void renderBackground(final GuiGraphics guiGraphics) {}
-
-    @Override
     public void tick() {
         switch (this.status) {
             case OPENING_GAME -> {

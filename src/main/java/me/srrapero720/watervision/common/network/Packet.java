@@ -6,15 +6,12 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
-import net.minecraftforge.network.NetworkEvent;
-
-import java.util.function.Supplier;
+import net.minecraftforge.event.network.CustomPayloadEvent;
 
 public interface Packet {
 
-    default void exec(final Supplier<NetworkEvent.Context> supplier) {
-        final var context = supplier.get();
-        context.enqueueWork(() -> this.exectute(context.getDirection().getReceptionSide().isClient(), context.getSender()));
+    default void exec(CustomPayloadEvent.Context context) {
+        context.enqueueWork(() -> this.exectute(context.isClientSide(), context.getSender()));
         context.setPacketHandled(true);
     }
 

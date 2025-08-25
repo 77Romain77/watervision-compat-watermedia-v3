@@ -1,12 +1,16 @@
 package me.srrapero720.watervision;
 
 import me.srrapero720.watervision.client.render.TextureWrapper;
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.LayeredDraw;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.RenderGuiOverlayEvent;
+import net.minecraftforge.client.event.ClientPauseChangeEvent;
+import net.minecraftforge.client.event.CustomizeGuiOverlayEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.watermedia.api.player.PlayerAPI;
@@ -15,21 +19,31 @@ import org.watermedia.api.player.videolan.VideoPlayer;
 import java.net.URI;
 
 @Mod.EventBusSubscriber(modid = WaterVision.ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
-public class VisionOverlay {
+public class VisionOverlay implements LayeredDraw.Layer {
     private static final int PADDING = 8;
     private static VideoPlayer player;
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "overlay_texture");
     static URI uri;
     static URI activeUri;
 
-    public static void onClientPause(boolean pause) {
-        if (player != null && player.isPaused() != pause) {
-            player.setPauseMode(pause);
+    @SubscribeEvent
+    public static void onClientPause(ClientPauseChangeEvent.Post e) {
+        if (player != null && player.isPaused() != e.isPaused()) {
+            player.setPauseMode(e.isPaused());
         }
     }
 
-    @SubscribeEvent
-    public static void onRenderOverlayPost(final RenderGuiOverlayEvent.Pre e) {
+    public static void onClientDisconnect() {
+        if (player != null) {
+            player.release();
+        }
+        player = null;
+        uri = null;
+    }
+
+
+    @Override
+    public void render(GuiGraphics graphics, DeltaTracker p_344084_) {
         if (uri != null && player == null) {
             player = new VideoPlayer(PlayerAPI.getFactory(), Minecraft.getInstance());
             Minecraft.getInstance().getTextureManager().register(TEXTURE, new TextureWrapper(player.texture()));
@@ -62,7 +76,6 @@ public class VisionOverlay {
 
         if (player.isSafeUse() && player.isPlaying()) {
             player.preRender();
-            final GuiGraphics graphics = e.getGuiGraphics();
 
             final int screenWidth = graphics.guiWidth();
             final int screenHeight = graphics.guiHeight();
@@ -81,13 +94,5 @@ public class VisionOverlay {
             player.release();
             player = null;
         }
-    }
-
-    public static void onClientDisconnect() {
-        if (player != null) {
-            player.release();
-        }
-        player = null;
-        uri = null;
     }
 }
