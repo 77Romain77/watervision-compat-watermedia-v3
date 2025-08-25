@@ -1,8 +1,11 @@
 package me.srrapero720.watervision.common.network;
 
+import com.mojang.serialization.Codec;
 import me.srrapero720.watervision.client.screens.VisionScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.api.distmarker.Dist;
@@ -11,6 +14,8 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 import java.net.URI;
 
 public class PlayVideoPacket extends Packet<PlayVideoPacket> {
+    public static final StreamCodec<RegistryFriendlyByteBuf, PlayVideoPacket> STREAM_CODEC = StreamCodec.ofMember(PlayVideoPacket::encode, PlayVideoPacket::decode);
+
     public String url;
     public int volume;
     public float speed;
@@ -44,8 +49,7 @@ public class PlayVideoPacket extends Packet<PlayVideoPacket> {
         throw new UnsupportedOperationException("Packet its S2C only");
     }
 
-    @Override
-    public void write(FriendlyByteBuf buf) {
+    public void encode(FriendlyByteBuf buf) {
         buf.writeUtf(this.url);
         buf.writeInt(this.volume);
         buf.writeFloat(this.speed);
@@ -56,15 +60,16 @@ public class PlayVideoPacket extends Packet<PlayVideoPacket> {
         buf.writeBoolean(this.exit);
     }
 
-    @Override
-    public void read(FriendlyByteBuf buf) {
-        this.url = buf.readUtf();
-        this.volume = buf.readInt();
-        this.speed = buf.readFloat();
-        this.stretch = buf.readBoolean();
-        this.gameFadeDuration = buf.readFloat();
-        this.videoFadeDuration = buf.readFloat();
-        this.controls = buf.readBoolean();
-        this.exit = buf.readBoolean();
+    public static PlayVideoPacket decode(FriendlyByteBuf buf) {
+        return new PlayVideoPacket(
+            buf.readUtf(),
+            buf.readInt(),
+            buf.readFloat(),
+            buf.readBoolean(),
+            buf.readFloat(),
+            buf.readFloat(),
+            buf.readBoolean(),
+            buf.readBoolean()
+        );
     }
 }
