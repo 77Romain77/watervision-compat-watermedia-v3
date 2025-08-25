@@ -1,18 +1,17 @@
 package me.srrapero720.watervision.common.network;
 
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.fabricmc.fabric.api.networking.v1.PacketSender;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
-import net.minecraftforge.event.network.CustomPayloadEvent;
 
-public interface Packet {
-
-    default void exec(CustomPayloadEvent.Context context) {
-        context.enqueueWork(() -> this.exectute(context.isClientSide(), context.getSender()));
-        context.setPacketHandled(true);
+public interface Packet extends CustomPacketPayload {
+    default void exec(Player player, PacketSender sender) {
+        this.exectute(!(player instanceof ServerPlayer), player);
     }
 
     private void exectute(boolean client, Player player) {
@@ -21,20 +20,17 @@ public interface Packet {
         } else {
             final ServerPlayer sender = (ServerPlayer) player;
             this.execServer(sender);
-            if (sender != null) {
-                VisionNetwork.sendToClient(this, sender.level(), sender.blockPosition());
-            }
         }
     }
 
-    @OnlyIn(Dist.CLIENT)
+    @Environment(EnvType.CLIENT)
     private void executeClient() {
         this.execClient(Minecraft.getInstance().player);
     }
 
-    @OnlyIn(Dist.CLIENT)
+    @Environment(EnvType.CLIENT)
     void execClient(Player player);
     void execServer(ServerPlayer player);
 
-    void encode(FriendlyByteBuf buf);
+    void write(FriendlyByteBuf buf);
 }

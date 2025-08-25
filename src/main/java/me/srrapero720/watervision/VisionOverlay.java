@@ -8,16 +8,11 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.LayeredDraw;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.ClientPauseChangeEvent;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import org.watermedia.api.player.PlayerAPI;
 import org.watermedia.api.player.videolan.VideoPlayer;
 
 import java.net.URI;
 
-@Mod.EventBusSubscriber(modid = WaterVision.ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public class VisionOverlay implements LayeredDraw.Layer {
     private static final int PADDING = 8;
     private static VideoPlayer player;
@@ -25,10 +20,9 @@ public class VisionOverlay implements LayeredDraw.Layer {
     static URI uri;
     static URI activeUri;
 
-    @SubscribeEvent
-    public static void onClientPause(final ClientPauseChangeEvent.Post e) {
-        if (player != null && player.isPaused() != e.isPaused()) {
-            player.setPauseMode(e.isPaused());
+    public static void onClientPause(final boolean pause) {
+        if (player != null && player.isPaused() != pause) {
+            player.setPauseMode(pause);
         }
     }
 
@@ -38,8 +32,15 @@ public class VisionOverlay implements LayeredDraw.Layer {
         player.stop();
     }
 
-    @SubscribeEvent
-    public static void onClientTick(final TickEvent.ClientTickEvent.Pre e) {
+    public static void onClientTick() {
+        if (player == null) {
+            player = new VideoPlayer(runable -> Minecraft.getInstance().execute(() -> {
+                runable.run();
+                GlStateManager._bindTexture(0);
+            }));
+            Minecraft.getInstance().getTextureManager().register(TEXTURE, new TextureWrapper(player.texture(), player.width(), player.height()));
+        }
+
         if (player == null) {
             player = new VideoPlayer(runable -> Minecraft.getInstance().execute(() -> {
                 runable.run();
@@ -74,6 +75,8 @@ public class VisionOverlay implements LayeredDraw.Layer {
     @Override
     public void render(GuiGraphics graphics, DeltaTracker p_344084_) {
         if (player != null && player.isSafeUse() && (player.isPlaying() || player.isBuffering()) && !player.isPaused()) {
+            player.preRender();
+            GlStateManager._bindTexture(0);
             final int screenWidth = graphics.guiWidth();
             final int screenHeight = graphics.guiHeight();
 

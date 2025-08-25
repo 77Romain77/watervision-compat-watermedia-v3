@@ -7,13 +7,13 @@ import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.TextureFormat;
 import me.srrapero720.watervision.WaterVision;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
 import net.minecraft.client.renderer.texture.AbstractTexture;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.NotNull;
 import org.watermedia.api.image.ImageRenderer;
 
-@OnlyIn(Dist.CLIENT)
+@Environment(EnvType.CLIENT)
 public class RendererWrapper extends AbstractTexture {
     private final ImageRenderer renderer;
     private final GlTexture[] glTextures;
@@ -23,7 +23,7 @@ public class RendererWrapper extends AbstractTexture {
         this.renderer = imageRenderer;
         this.glTextures = new GlTexture[this.renderer.textures.length];
         for (int i = 0; i < this.glTextures.length; i++) {
-            this.glTextures[i] = new GlTexture("rendererwrapper_" + imageRenderer.texture(i), TextureFormat.RGBA8, imageRenderer.width, imageRenderer.height, 1, imageRenderer.texture(i), false) {
+            this.glTextures[i] = new GlTexture("rendererwrapper_" + imageRenderer.texture(i), TextureFormat.RGBA8, imageRenderer.width, imageRenderer.height, 1, imageRenderer.texture(i)) {
                 @Override public void close() {}
             };
             this.glTextures[i].setTextureFilter(FilterMode.NEAREST, false);

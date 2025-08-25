@@ -1,17 +1,18 @@
 package me.srrapero720.watervision.client.screens;
 
 import com.mojang.blaze3d.opengl.GlStateManager;
+import com.mojang.blaze3d.opengl.GlStateManager;
 import me.srrapero720.watervision.WaterVision;
 import me.srrapero720.watervision.WaterVisionClient;
 import me.srrapero720.watervision.client.render.TextureWrapper;
 import me.srrapero720.watervision.client.screens.widgets.FadeBackground;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
-import net.minecraftforge.fml.loading.FMLLoader;
 import org.watermedia.api.player.PlayerAPI;
 import org.watermedia.api.player.videolan.VideoPlayer;
 
@@ -64,7 +65,6 @@ public class VisionScreen extends Screen {
         videoPlayer.setSpeed(Mth.clamp(speed, 0.1f, 3f));
 
         videoPlayer.startPaused(uri);
-        Minecraft.getInstance().getSoundManager().pause();
     }
 
     @Override
@@ -90,7 +90,7 @@ public class VisionScreen extends Screen {
         }
 
         // DEBUG
-        if (!FMLLoader.isProduction()) {
+        if (FabricLoader.getInstance().isDevelopmentEnvironment()) {
             if (!videoPlayer.isSafeUse()) return;
             guiGraphics.drawString(this.font, String.format("State: %s", videoPlayer.getStateName()), 0, (this.height / 2) - 12, 0xFFFFFF);
             guiGraphics.drawString(this.font, String.format("Time: %s (%s) / %s (%s)", FORMAT.format(new Date(videoPlayer.getTime())), videoPlayer.getTime(), FORMAT.format(new Date(videoPlayer.getDuration())), videoPlayer.getDuration()), 0, (this.height / 2), 0xFFFFFF);
@@ -131,7 +131,6 @@ public class VisionScreen extends Screen {
                 if (this.gameBackground.isFadedIn() && videoPlayer.isSafeUse() && videoPlayer.isReady()) {
                     this.status = Status.OPENING_VIDEO;
                     videoPlayer.play();
-
                 }
             }
             case OPENING_VIDEO -> {

@@ -10,12 +10,15 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import me.srrapero720.watervision.WaterVision;
 import me.srrapero720.watervision.WaterVisionClient;
 import me.srrapero720.watervision.common.network.*;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import net.minecraft.client.Minecraft;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.network.chat.Component;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
 
 import java.net.URI;
 
@@ -77,17 +80,17 @@ public class VisionCommands {
         );
     }
 
-    @OnlyIn(Dist.CLIENT)
-    public static void registerClient(CommandDispatcher<CommandSourceStack> dispatcher) {
-        dispatcher.register(Commands.literal("playvideoclient")
+    @Environment(EnvType.CLIENT)
+    public static void registerClient(final CommandDispatcher<FabricClientCommandSource> dispatcher) {
+        dispatcher.register(ClientCommandManager.literal("playvideoclient")
                 .requires(source -> source.getEntity() != null)
-                .then(Commands.argument("url", StringArgumentType.string())
+                .then(ClientCommandManager.argument("url", StringArgumentType.string())
                         .executes(VisionCommands::openVideoScreenClient)
-                        .then(Commands.argument("volume", IntegerArgumentType.integer(0, 100))
+                        .then(ClientCommandManager.argument("volume", IntegerArgumentType.integer(0, 100))
                                 .executes(VisionCommands::openVideoScreenClient)
-                                .then(Commands.argument("speed", FloatArgumentType.floatArg(0.25f, 2.0f))
+                                .then(ClientCommandManager.argument("speed", FloatArgumentType.floatArg(0.25f, 2.0f))
                                         .executes(VisionCommands::openVideoScreenClient)
-                                        .then(Commands.argument("stretch_video", BoolArgumentType.bool())
+                                        .then(ClientCommandManager.argument("stretch_video", BoolArgumentType.bool())
                                                 .executes(VisionCommands::openVideoScreenClient)
                                         )
                                 )
@@ -95,46 +98,56 @@ public class VisionCommands {
                 )
         );
 
-        dispatcher.register(Commands.literal("playoverlayclient")
+        dispatcher.register(ClientCommandManager.literal("playoverlayclient")
                 .requires(source -> source.getEntity() != null)
-                .then(Commands.argument("url", StringArgumentType.string())
+                .then(ClientCommandManager.argument("url", StringArgumentType.string())
                         .executes(VisionCommands::openVideoOverlayClient)
                 )
         );
 
-        dispatcher.register(Commands.literal("stopoverlayclient")
+        dispatcher.register(ClientCommandManager.literal("stopoverlayclient")
                 .requires(source -> source.getEntity() != null)
                 .executes(VisionCommands::closeVideoOverlayClient)
         );
     }
 
-    @OnlyIn(Dist.CLIENT)
-    private static int openVideoScreenClient(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+    @Environment(EnvType.CLIENT)
+    private static int openVideoScreenClient(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException {
         try {
             final var url = StringArgumentType.getString(context, "url");
-            final var volume = getIntOrDefault(context, "volume", 100);
-            final var speed = getFloatOrDefault(context, "speed", 1.0f);
-            final var stretchVideo = getBoolOrDefault(context, "stretch_video", false);
+            final var volume = getIntOrDefaultClient(context, "volume", 100);
+            final var speed = getFloatOrDefaultClient(context, "speed", 1.0f);
+            final var stretchVideo = getBoolOrDefaultClient(context, "stretch_video", false);
 
-            WaterVisionClient.openScreen(URI.create(url), volume, speed, stretchVideo, WaterVisionClient.DEF_GAME_FADE_DURATION, WaterVisionClient.DEF_VIDEO_FADE_DURATION, true, true);
+            // THIS IS A WORKARROUND BECAUSE... AMM... FABRIC SUCKS
+            new Thread(() -> {
+                try {
+                    Thread.sleep(20);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                Minecraft.getInstance().execute(() -> {
+                    WaterVisionClient.openScreen(URI.create(url), volume, speed, stretchVideo, WaterVisionClient.DEF_GAME_FADE_DURATION, WaterVisionClient.DEF_VIDEO_FADE_DURATION, true, true);
+                });
+            }).start();
             return 0;
         } catch (final Exception e) {
-            context.getSource().sendFailure(Component.literal("Failed to open video screen, see log for more details"));
+            context.getSource().sendError(Component.literal("Failed to open video screen, see log for more details"));
             WaterVision.LOGGER.error("Failed to execute /playvideoclient command", e);
         }
 
         return 1;
     }
 
-    @OnlyIn(Dist.CLIENT)
-    private static int openVideoOverlayClient(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+    @Environment(EnvType.CLIENT)
+    private static int openVideoOverlayClient(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException {
         try {
             final var url = StringArgumentType.getString(context, "url");
 
             WaterVisionClient.openOverlay(URI.create(url));
             return 0;
-        } catch (Exception e) {
-            context.getSource().sendFailure(Component.literal("Failed to open video screen, see console for more details"));
+        } catch (Throwable e) {
+            context.getSource().sendError(Component.literal("Failed to open video screen, see console for more details"));
             WaterVision.LOGGER.error("Failed to execute /playoverlay command", e);
 
             if (e instanceof CommandSyntaxException) {
@@ -144,14 +157,14 @@ public class VisionCommands {
         return 1;
     }
 
-    @OnlyIn(Dist.CLIENT)
-    private static int closeVideoOverlayClient(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+    @Environment(EnvType.CLIENT)
+    private static int closeVideoOverlayClient(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException {
         try {
 
             WaterVisionClient.closeOverlay();
             return 0;
         } catch (Exception e) {
-            context.getSource().sendFailure(Component.literal("Failed to open video screen, see console for more details"));
+            context.getSource().sendError(Component.literal("Failed to open video screen, see console for more details"));
             WaterVision.LOGGER.error("Failed to execute /playoverlay command", e);
 
             if (e instanceof CommandSyntaxException) {
@@ -174,11 +187,12 @@ public class VisionCommands {
             final var exit = getBoolOrDefault(context, "allow_exit", true);
 
             for (final var player: players) {
+                WaterVision.LOGGER.info("Opening videoscreen for {}", player.getName().getString());
                 VisionNetwork.sendTo(new PlayVideoPacket(url, volume, speed, stretchVideo, gameFadeDuration, videoFadeDuration, allowControls, exit), player);
             }
 
             return 0;
-        } catch (Exception e) {
+        } catch (final Throwable e) {
             context.getSource().sendFailure(Component.literal("Failed to open video screen, see console for more details"));
             WaterVision.LOGGER.error("Failed to execute /playvideo command", e);
 
@@ -276,6 +290,38 @@ public class VisionCommands {
     }
 
     private static boolean getBoolOrDefault(CommandContext<CommandSourceStack> context, String name, boolean def) {
+        try {
+            return BoolArgumentType.getBool(context, name);
+        } catch (IllegalArgumentException ex) {
+            return def;
+        }
+    }
+
+    private static String getStringOrDefaultClient(CommandContext<FabricClientCommandSource> context, String name, String def) {
+        try {
+            return StringArgumentType.getString(context, name);
+        } catch (IllegalArgumentException ex) {
+            return def;
+        }
+    }
+
+    private static int getIntOrDefaultClient(CommandContext<FabricClientCommandSource> context, String name, int def) {
+        try {
+            return IntegerArgumentType.getInteger(context, name);
+        } catch (IllegalArgumentException ex) {
+            return def;
+        }
+    }
+
+    private static float getFloatOrDefaultClient(CommandContext<FabricClientCommandSource> context, String name, float def) {
+        try {
+            return FloatArgumentType.getFloat(context, name);
+        } catch (IllegalArgumentException ex) {
+            return def;
+        }
+    }
+
+    private static boolean getBoolOrDefaultClient(CommandContext<FabricClientCommandSource> context, String name, boolean def) {
         try {
             return BoolArgumentType.getBool(context, name);
         } catch (IllegalArgumentException ex) {
