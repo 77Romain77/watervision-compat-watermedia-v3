@@ -157,6 +157,7 @@ publishMods {
         clientRequired = true
         serverRequired = true
         projectSlug = modid
+        requires("watermedia")
         additionalFile(sourcesJar) {
             name = "$modid-sources/${project.properties.version}"
         }
@@ -165,6 +166,7 @@ publishMods {
     modrinth {
         accessToken = MT_TOKEN
         projectId = modrinthid
+        requires("watermedia")
         minecraftVersions.addAll(minecraftversion)
     }
 }
