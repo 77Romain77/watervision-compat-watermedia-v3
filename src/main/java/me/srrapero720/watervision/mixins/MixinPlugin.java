@@ -1,16 +1,15 @@
-package me.authorname.examplemod.mixins;
+package me.srrapero720.watervision.mixins;
 
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.MarkerManager;
 import org.objectweb.asm.tree.ClassNode;
-import org.spongepowered.asm.launch.MixinLaunchPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 
 import java.util.List;
 import java.util.Set;
 
-import static me.authorname.examplemod.ExampleMod.LOGGER;
+import static me.srrapero720.watervision.WaterVision.LOGGER;
 
 public class MixinPlugin implements IMixinConfigPlugin {
     private static final Marker IT = MarkerManager.getMarker(MixinPlugin.class.getSimpleName());

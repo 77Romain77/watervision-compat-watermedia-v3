@@ -91,6 +91,9 @@ dependencies {
     minecraft "net.minecraftforge:forge:${minecraftversion}-${forgeversion}"
     annotationProcessor "net.fabricmc:sponge-mixin:${mixin_fabric_version}+mixin.${mixin_version}"
 
+    // DEPENDENCIES
+    implementation "com.github.WaterMediaTeam:watermedia:$watermediaversion"
+
     // JARJAR MIXIN EXTRA
     compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:${mixinextra_version}"))
     implementation(jarJar("io.github.llamalad7:mixinextras-forge:${mixinextra_version}")) {
@@ -138,7 +141,7 @@ jar {
 publishMods {
     file = jar.archiveFile
     changelog = getChangelogText()
-    type = STABLE
+    type = ALPHA
     displayName = "$modname/$project.properties.version"
     modLoaders.add(modloader.toLowerCase())
     additionalFiles.from(sourcesJar.archiveFile)
