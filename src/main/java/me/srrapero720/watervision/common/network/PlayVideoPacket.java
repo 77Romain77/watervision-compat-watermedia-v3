@@ -1,5 +1,6 @@
 package me.srrapero720.watervision.common.network;
 
+import com.mojang.serialization.Codec;
 import me.srrapero720.watervision.WaterVisionClient;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -38,14 +39,14 @@ public record PlayVideoPacket(String url, int volume, float speed, boolean stret
 
     public static PlayVideoPacket decode(FriendlyByteBuf buf) {
         return new PlayVideoPacket(
-                buf.readUtf(),
-                buf.readInt(),
-                buf.readFloat(),
-                buf.readBoolean(),
-                buf.readFloat(),
-                buf.readFloat(),
-                buf.readBoolean(),
-                buf.readBoolean()
+            buf.readUtf(),
+            buf.readInt(),
+            buf.readFloat(),
+            buf.readBoolean(),
+            buf.readFloat(),
+            buf.readFloat(),
+            buf.readBoolean(),
+            buf.readBoolean()
         );
     }
 }
