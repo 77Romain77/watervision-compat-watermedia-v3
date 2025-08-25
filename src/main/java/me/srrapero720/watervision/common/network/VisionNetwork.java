@@ -2,13 +2,14 @@ package me.srrapero720.watervision.common.network;
 
 import me.srrapero720.watervision.WaterVision;
 import net.minecraft.core.BlockPos;
-import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraftforge.network.*;
+import net.minecraftforge.network.ChannelBuilder;
+import net.minecraftforge.network.PacketDistributor;
+import net.minecraftforge.network.SimpleChannel;
 
 public class VisionNetwork {
     public static final ResourceLocation NAME = ResourceLocation.fromNamespaceAndPath(WaterVision.ID, "network");

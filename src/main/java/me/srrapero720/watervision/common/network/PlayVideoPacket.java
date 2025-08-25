@@ -1,6 +1,5 @@
 package me.srrapero720.watervision.common.network;
 
-import com.mojang.serialization.Codec;
 import me.srrapero720.watervision.WaterVisionClient;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;

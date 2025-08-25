@@ -1,18 +1,16 @@
 package me.srrapero720.watervision;
 
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.*;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import me.srrapero720.watervision.client.screens.VisionScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.joml.Matrix4f;
 
 import java.net.URI;
-import java.util.Objects;
 
 public class WaterVisionClient {
     public static final int DEF_VOLUME = 100;
@@ -58,19 +56,13 @@ public class WaterVisionClient {
         final var pMinV = offsetY / height;
         final var pMaxV = (offsetY + height) / height;
 
-        RenderSystem.enableBlend();
-        final int tex = Minecraft.getInstance().textureManager.getTexture(texture).getId();
-        RenderSystem.bindTexture(tex);
-        RenderSystem.setShaderTexture(0, tex);
-        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, alpha);
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        final Matrix4f matrix4f = graphics.pose().last().pose();
-        final BufferBuilder bufferbuilder = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-        bufferbuilder.addVertex(matrix4f, pX1, pY1, pBlitOffset).setUv(pMinU, pMinV);
-        bufferbuilder.addVertex(matrix4f, pX1, pY2, pBlitOffset).setUv(pMinU, pMaxV);
-        bufferbuilder.addVertex(matrix4f, pX2, pY2, pBlitOffset).setUv(pMaxU, pMaxV);
-        bufferbuilder.addVertex(matrix4f, pX2, pY1, pBlitOffset).setUv(pMaxU, pMinV);
-        BufferUploader.drawWithShader(Objects.requireNonNull(bufferbuilder.build()));
-        RenderSystem.disableBlend();
+        graphics.drawSpecial(multiBufferSource -> {
+            final VertexConsumer bufferbuilder = multiBufferSource.getBuffer(RenderType.guiTextured(texture));
+            final Matrix4f matrix4f = graphics.pose().last().pose();
+            bufferbuilder.addVertex(matrix4f, pX1, pY1, pBlitOffset).setColor(0xFFFFFFFF).setUv(pMinU, pMinV);
+            bufferbuilder.addVertex(matrix4f, pX1, pY2, pBlitOffset).setColor(0xFFFFFFFF).setUv(pMinU, pMaxV);
+            bufferbuilder.addVertex(matrix4f, pX2, pY2, pBlitOffset).setColor(0xFFFFFFFF).setUv(pMaxU, pMaxV);
+            bufferbuilder.addVertex(matrix4f, pX2, pY1, pBlitOffset).setColor(0xFFFFFFFF).setUv(pMaxU, pMinV);
+        });
     }
 }
