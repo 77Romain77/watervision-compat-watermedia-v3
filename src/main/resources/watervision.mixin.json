@@ -9,7 +9,9 @@
   ],
   "client": [
     "ConnectionMixin",
-    "IntegratedServerMixin"
+    "GuiMixin",
+    "IntegratedServerMixin",
+    "MinecraftMixin"
   ],
   "injectors": {
     "defaultRequire": 1

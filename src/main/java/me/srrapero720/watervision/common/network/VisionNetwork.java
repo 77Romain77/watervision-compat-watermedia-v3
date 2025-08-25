@@ -1,50 +1,34 @@
 package me.srrapero720.watervision.common.network;
 
-import me.srrapero720.watervision.WaterVision;
-import net.minecraft.core.BlockPos;
-import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.resources.ResourceLocation;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraftforge.network.*;
 
 public class VisionNetwork {
-    public static final ResourceLocation NAME = ResourceLocation.fromNamespaceAndPath(WaterVision.ID, "network");
-
-    private static SimpleChannel INSTANCE;
-
     public static void init() {
-        INSTANCE = ChannelBuilder.named(NAME)
-                .simpleChannel()
-                    .play()
-                        .clientbound()
-                        .add(PlayVideoPacket.class, PlayVideoPacket.STREAM_CODEC, Packet::exec)
-                        .add(PlayVideoOverlayPacket.class, PlayVideoOverlayPacket.STREAM_CODEC, Packet::exec)
-                        .add(StopVideoPacket.class, StopVideoPacket.STREAM_CODEC, Packet::exec)
-                        .add(StopVideoOverlayPacket.class, StopVideoOverlayPacket.STREAM_CODEC, Packet::exec)
-                .build();
-
+        PayloadTypeRegistry.playS2C().register(PlayVideoPacket.PACKET_TYPE, PlayVideoPacket.STREAM_CODEC);
+        PayloadTypeRegistry.playS2C().register(PlayVideoOverlayPacket.PACKET_TYPE, PlayVideoOverlayPacket.STREAM_CODEC);
+        PayloadTypeRegistry.playS2C().register(StopVideoOverlayPacket.PACKET_TYPE, StopVideoOverlayPacket.STREAM_CODEC);
+        PayloadTypeRegistry.playS2C().register(StopVideoPacket.PACKET_TYPE, StopVideoPacket.STREAM_CODEC);
     }
 
-    public static <MSG> void sendTo(final MSG msg, final ServerPlayer player) {
-        INSTANCE.send(msg, player.connection.getConnection());
+    @Environment(EnvType.CLIENT)
+    public static void initClient() {
+        ClientPlayNetworking.registerGlobalReceiver(PlayVideoPacket.PACKET_TYPE, VisionNetwork::handle);
+        ClientPlayNetworking.registerGlobalReceiver(PlayVideoOverlayPacket.PACKET_TYPE, VisionNetwork::handle);
+        ClientPlayNetworking.registerGlobalReceiver(StopVideoOverlayPacket.PACKET_TYPE, VisionNetwork::handle);
+        ClientPlayNetworking.registerGlobalReceiver(StopVideoPacket.PACKET_TYPE, VisionNetwork::handle);
     }
 
-    public static <MSG> void sendToClient(final MSG message, final Level level, final BlockPos pos) {
-        sendToClient(message, level.getChunkAt(pos));
+    @Environment(EnvType.CLIENT)
+    private static <T extends Packet> void handle(T packet, ClientPlayNetworking.Context context) {
+        packet.exec(context.player(), context.responseSender());
     }
 
-    public static <MSG> void sendToClient(final MSG msg, final LevelChunk chunk) {
-        INSTANCE.send(msg, PacketDistributor.TRACKING_CHUNK.with(chunk));
-    }
-
-    public static <MSG> void sendToAllTracking(final MSG msg, final LivingEntity entityToTrack) {
-        INSTANCE.send(msg, PacketDistributor.TRACKING_ENTITY.with(entityToTrack));
-    }
-
-    public static <MSG> void sendToAll(MSG msg) {
-        INSTANCE.send(msg, PacketDistributor.ALL.noArg());
+    public static void sendTo(final Packet packet, final ServerPlayer player) {
+        ServerPlayNetworking.send(player, packet);
     }
 }

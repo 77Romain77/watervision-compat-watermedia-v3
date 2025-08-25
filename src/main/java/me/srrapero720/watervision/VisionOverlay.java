@@ -3,22 +3,15 @@ package me.srrapero720.watervision;
 import me.srrapero720.watervision.client.render.TextureWrapper;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.LayeredDraw;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.ClientPauseChangeEvent;
-import net.minecraftforge.client.event.CustomizeGuiOverlayEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
 import org.watermedia.api.player.PlayerAPI;
 import org.watermedia.api.player.videolan.VideoPlayer;
 
 import java.net.URI;
 
-@Mod.EventBusSubscriber(modid = WaterVision.ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public class VisionOverlay implements LayeredDraw.Layer {
     private static final int PADDING = 8;
     private static VideoPlayer player;
@@ -26,10 +19,9 @@ public class VisionOverlay implements LayeredDraw.Layer {
     static URI uri;
     static URI activeUri;
 
-    @SubscribeEvent
-    public static void onClientPause(ClientPauseChangeEvent.Post e) {
-        if (player != null && player.isPaused() != e.isPaused()) {
-            player.setPauseMode(e.isPaused());
+    public static void onClientPause(final boolean pause) {
+        if (player != null && player.isPaused() != pause) {
+            player.setPauseMode(pause);
         }
     }
 
@@ -41,9 +33,8 @@ public class VisionOverlay implements LayeredDraw.Layer {
         uri = null;
     }
 
-
     @Override
-    public void render(GuiGraphics graphics, DeltaTracker p_344084_) {
+    public void render(final GuiGraphics graphics, final DeltaTracker tracker) {
         if (uri != null && player == null) {
             player = new VideoPlayer(PlayerAPI.getFactory(), Minecraft.getInstance());
             Minecraft.getInstance().getTextureManager().register(TEXTURE, new TextureWrapper(player.texture()));

@@ -4,13 +4,13 @@ import me.srrapero720.watervision.WaterVision;
 import me.srrapero720.watervision.WaterVisionClient;
 import me.srrapero720.watervision.client.render.TextureWrapper;
 import me.srrapero720.watervision.client.screens.widgets.FadeBackground;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
-import net.minecraftforge.fml.loading.FMLLoader;
 import org.watermedia.api.player.PlayerAPI;
 import org.watermedia.api.player.videolan.VideoPlayer;
 
@@ -57,7 +57,6 @@ public class VisionScreen extends Screen {
         this.textureWrapper = new TextureWrapper(this.videoPlayer.texture());
         Minecraft.getInstance().getTextureManager().register(TEXTURE, this.textureWrapper);
         this.videoPlayer.startPaused(uri);
-        Minecraft.getInstance().getSoundManager().pause();
     }
 
     @Override
@@ -83,7 +82,7 @@ public class VisionScreen extends Screen {
         }
 
         // DEBUG
-        if (!FMLLoader.isProduction()) {
+        if (FabricLoader.getInstance().isDevelopmentEnvironment()) {
             if (!this.videoPlayer.isSafeUse()) return;
             guiGraphics.drawString(this.font, String.format("State: %s", this.videoPlayer.getStateName()), 0, (this.height / 2) - 12, 0xFFFFFF);
             guiGraphics.drawString(this.font, String.format("Time: %s (%s) / %s (%s)", FORMAT.format(new Date(this.videoPlayer.getTime())), this.videoPlayer.getTime(), FORMAT.format(new Date(this.videoPlayer.getDuration())), this.videoPlayer.getDuration()), 0, (this.height / 2), 0xFFFFFF);
