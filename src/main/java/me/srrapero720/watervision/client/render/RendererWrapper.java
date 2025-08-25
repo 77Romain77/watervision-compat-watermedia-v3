@@ -1,7 +1,11 @@
 package me.srrapero720.watervision.client.render;
 
+import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.opengl.GlTexture;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.blaze3d.textures.TextureFormat;
 import me.srrapero720.watervision.WaterVision;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.neoforged.api.distmarker.Dist;
@@ -19,27 +23,13 @@ public class RendererWrapper extends AbstractTexture {
         this.renderer = imageRenderer;
         this.glTextures = new GlTexture[this.renderer.textures.length];
         for (int i = 0; i < this.glTextures.length; i++) {
-            this.glTextures[i] = new ExternalGlTexture(this.renderer.width, this.renderer.height, this.renderer.texture(i));
+            this.glTextures[i] = new GlTexture("rendererwrapper_" + imageRenderer.texture(i), TextureFormat.RGBA8, imageRenderer.width, imageRenderer.height, 1, imageRenderer.texture(i), false) {
+                @Override public void close() {}
+            };
+            this.glTextures[i].setTextureFilter(FilterMode.NEAREST, false);
+            GlStateManager._bindTexture(0); // RESET
         }
         this.texture = this.glTextures[0];
-    }
-
-    @Override
-    public void setFilter(final boolean p_117961_, final boolean p_117962_) {
-        this.getTexture();
-        super.setFilter(p_117961_, p_117962_);
-    }
-
-    @Override
-    public void setClamp(final boolean p_377282_) {
-        this.getTexture();
-        super.setClamp(p_377282_);
-    }
-
-    @Override
-    public void setBlurMipmap(final boolean blur, final boolean mipmap) {
-        this.getTexture();
-        super.setBlurMipmap(blur, mipmap);
     }
 
     @Override
@@ -50,6 +40,7 @@ public class RendererWrapper extends AbstractTexture {
                 return this.texture = this.glTextures[i];
             }
         }
+        GlStateManager._bindTexture(0); // RESET
         return this.texture = this.glTextures[0];
     }
 

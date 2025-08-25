@@ -1,5 +1,6 @@
 package me.srrapero720.watervision;
 
+import com.mojang.blaze3d.opengl.GlStateManager;
 import me.srrapero720.watervision.client.render.TextureWrapper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -9,8 +10,8 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientPauseChangeEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
-import org.watermedia.api.player.PlayerAPI;
 import org.watermedia.api.player.videolan.VideoPlayer;
 
 import java.net.URI;
@@ -24,56 +25,56 @@ public class VisionOverlay {
     static URI activeUri;
 
     @SubscribeEvent
-    public static void onClientPause(ClientPauseChangeEvent.Post e) {
+    public static void onClientPause(final ClientPauseChangeEvent.Post e) {
         if (player != null && player.isPaused() != e.isPaused()) {
             player.setPauseMode(e.isPaused());
         }
     }
 
     public static void onClientDisconnect() {
-        if (player != null) {
-            player.release();
-        }
-        player = null;
         uri = null;
+        activeUri = null;
+        player.stop();
     }
 
     @SubscribeEvent
-    public static void onRenderGui(final RenderGuiEvent.Post e) {
-        if (uri != null && player == null) {
-            player = new VideoPlayer(PlayerAPI.getFactory(), Minecraft.getInstance());
+    public static void onClientTick(final ClientTickEvent.Pre e) {
+        if (player == null) {
+            player = new VideoPlayer(runable -> Minecraft.getInstance().execute(() -> {
+                runable.run();
+                GlStateManager._bindTexture(0);
+            }));
             Minecraft.getInstance().getTextureManager().register(TEXTURE, new TextureWrapper(player.texture(), player.width(), player.height()));
-            player.start(uri);
-            activeUri = uri;
         }
 
-        if (player == null) {
-            return;
+        if (uri != activeUri) {
+            if (uri == null) {
+                player.stop();
+                activeUri = null;
+                return;
+            }
+
+            player.startPaused(uri);
+            activeUri = uri;
         }
 
         if (player.isBroken()) {
             Minecraft.getInstance().getChatListener().handleSystemMessage(Component.literal("Failed to open a video overlay"), true);
-            player.release();
-            player = null;
-            return;
-        }
-
-        if (uri == null && activeUri != null) {
-            player.release();
-            player = null;
             activeUri = null;
-            return;
+            uri = null;
         }
 
-        if (activeUri != uri) {
-            player.start(uri);
-            activeUri = uri;
+        if (player.isSafeUse() && player.isReady() && player.isPaused() && !Minecraft.getInstance().isPaused()) {
+            player.play();
         }
+    }
 
-        if (player.isSafeUse() && player.isPlaying()) {
+
+    @SubscribeEvent
+    public static void onRenderGui(final RenderGuiEvent.Post e) {
+        if (player != null && player.isSafeUse() && (player.isPlaying() || player.isBuffering()) && !player.isPaused()) {
             player.preRender();
-            final GuiGraphics graphics = e.getGuiGraphics();
-
+            GuiGraphics graphics = e.getGuiGraphics();
             final int screenWidth = graphics.guiWidth();
             final int screenHeight = graphics.guiHeight();
 
@@ -88,8 +89,7 @@ public class VisionOverlay {
         } else if (player.isSafeUse() && player.isEnded()) {
             uri = null;
             activeUri = null;
-            player.release();
-            player = null;
+            player.stop();
         }
     }
 }

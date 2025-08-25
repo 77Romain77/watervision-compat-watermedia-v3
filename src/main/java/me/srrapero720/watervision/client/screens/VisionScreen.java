@@ -1,5 +1,6 @@
 package me.srrapero720.watervision.client.screens;
 
+import com.mojang.blaze3d.opengl.GlStateManager;
 import me.srrapero720.watervision.WaterVision;
 import me.srrapero720.watervision.WaterVisionClient;
 import me.srrapero720.watervision.client.render.TextureWrapper;
@@ -33,8 +34,8 @@ public class VisionScreen extends Screen {
     private final boolean controls;
     private final boolean exit;
     // PLAYER
-    private final VideoPlayer videoPlayer;
-    private TextureWrapper textureWrapper;
+    private static VideoPlayer videoPlayer;
+    private static TextureWrapper textureWrapper;
 
     // STATE
     private Status status = Status.OPENING_GAME;
@@ -51,11 +52,19 @@ public class VisionScreen extends Screen {
         this.videoBackground = new FadeBackground(videoFadeDuration);
         this.videoBackground.forceFadeIn();
 
-        this.videoPlayer = new VideoPlayer(PlayerAPI.getFactory(), Minecraft.getInstance());
-        this.videoPlayer.setVolume(Mth.clamp(volume, 0, 100));
-        this.videoPlayer.setSpeed(Mth.clamp(speed, 0.1f, 3f));
+        if (videoPlayer == null) {
+            videoPlayer = new VideoPlayer(PlayerAPI.getFactory(), runable -> Minecraft.getInstance().execute(() -> {
+                runable.run();
+                GlStateManager._bindTexture(0);
+            }));
+            textureWrapper = new TextureWrapper(videoPlayer.texture(), videoPlayer.width(), videoPlayer.height());
+            Minecraft.getInstance().getTextureManager().register(TEXTURE, textureWrapper);
+        }
 
-        this.videoPlayer.startPaused(uri);
+        videoPlayer.setVolume(Mth.clamp(volume, 0, 100));
+        videoPlayer.setSpeed(Mth.clamp(speed, 0.1f, 3f));
+
+        videoPlayer.startPaused(uri);
         Minecraft.getInstance().getSoundManager().pause();
     }
 
@@ -64,11 +73,11 @@ public class VisionScreen extends Screen {
         this.gameBackground.render(guiGraphics, this.width, this.height, this.status != Status.CLOSING_GAME, partialTick);
 
         if (this.status == Status.OPENING_VIDEO || this.status == Status.CLOSING_VIDEO) {
-            this.videoPlayer.preRender();
+            videoPlayer.preRender();
             if (this.stretch) {
                 WaterVisionClient.internal$blit(guiGraphics, TEXTURE, 1, 0, 0, 0, 0, this.width, this.height);
             } else {
-                final AspectRatioDimension dim = this.render$getAspectRatio(this.width, this.height, this.videoPlayer.width(), this.videoPlayer.height());
+                final AspectRatioDimension dim = this.render$getAspectRatio(this.width, this.height, videoPlayer.width(), videoPlayer.height());
                 WaterVisionClient.internal$blit(guiGraphics, TEXTURE, 1, dim.x, dim.y, 0, 0, dim.width, dim.height);
             }
         }
@@ -77,22 +86,22 @@ public class VisionScreen extends Screen {
             this.videoBackground.render(guiGraphics, this.width, this.height, this.status == Status.CLOSING_VIDEO, partialTick);
         }
 
-        if (this.status == Status.OPENING_GAME || this.status == Status.CLOSING_VIDEO || this.status == Status.CLOSING_GAME || this.videoPlayer.isBuffering() || this.videoPlayer.isLoading()) {
+        if (this.status == Status.OPENING_GAME || this.status == Status.CLOSING_VIDEO || this.status == Status.CLOSING_GAME || videoPlayer.isBuffering() || videoPlayer.isLoading()) {
             this.render$loadingIcon(guiGraphics, partialTick);
         }
 
         // DEBUG
         if (!FMLLoader.isProduction()) {
-            if (!this.videoPlayer.isSafeUse()) return;
-            guiGraphics.drawString(this.font, String.format("State: %s", this.videoPlayer.getStateName()), 0, (this.height / 2) - 12, 0xFFFFFF);
-            guiGraphics.drawString(this.font, String.format("Time: %s (%s) / %s (%s)", FORMAT.format(new Date(this.videoPlayer.getTime())), this.videoPlayer.getTime(), FORMAT.format(new Date(this.videoPlayer.getDuration())), this.videoPlayer.getDuration()), 0, (this.height / 2), 0xFFFFFF);
-            guiGraphics.drawString(this.font, String.format("Media Duration: %s (%s)", FORMAT.format(new Date(this.videoPlayer.getMediaInfoDuration())), this.videoPlayer.getMediaInfoDuration()), 0, (this.height / 2) + 12, 0xFFFFFF);
+            if (!videoPlayer.isSafeUse()) return;
+            guiGraphics.drawString(this.font, String.format("State: %s", videoPlayer.getStateName()), 0, (this.height / 2) - 12, 0xFFFFFF);
+            guiGraphics.drawString(this.font, String.format("Time: %s (%s) / %s (%s)", FORMAT.format(new Date(videoPlayer.getTime())), videoPlayer.getTime(), FORMAT.format(new Date(videoPlayer.getDuration())), videoPlayer.getDuration()), 0, (this.height / 2), 0xFFFFFF);
+            guiGraphics.drawString(this.font, String.format("Media Duration: %s (%s)", FORMAT.format(new Date(videoPlayer.getMediaInfoDuration())), videoPlayer.getMediaInfoDuration()), 0, (this.height / 2) + 12, 0xFFFFFF);
             guiGraphics.drawString(this.font, String.format("Orchestrator Status: %s", this.status.name()), 0, (this.height / 2) + 24, 0xFFFFFF);
-            guiGraphics.drawString(this.font, String.format("Video Size: %sx%s", this.videoPlayer.width(), this.videoPlayer.height()), 0, (this.height / 2) + 36, 0xFFFFFF);
+            guiGraphics.drawString(this.font, String.format("Video Size: %sx%s", videoPlayer.width(), videoPlayer.height()), 0, (this.height / 2) + 36, 0xFFFFFF);
         }
     }
 
-    private void render$loadingIcon(GuiGraphics graphics, float partialTick) {
+    private void render$loadingIcon(final GuiGraphics graphics, final float partialTick) {
         WaterVisionClient.internal$blit(graphics, WaterVision.LOADING_ANIM_TEXTURE, 1, this.width - 40, this.height - 40, 0, 0, 40, 40);
     }
 
@@ -120,9 +129,9 @@ public class VisionScreen extends Screen {
     public void tick() {
         switch (this.status) {
             case OPENING_GAME -> {
-                if (this.gameBackground.isFadedIn() && this.videoPlayer.isSafeUse() && this.videoPlayer.isReady()) {
+                if (this.gameBackground.isFadedIn() && videoPlayer.isSafeUse() && videoPlayer.isReady()) {
                     this.status = Status.OPENING_VIDEO;
-                    this.videoPlayer.play();
+                    videoPlayer.play();
                     if (this.textureWrapper == null) {
                         this.textureWrapper = new TextureWrapper(this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height());
                         Minecraft.getInstance().getTextureManager().register(TEXTURE, this.textureWrapper);
@@ -130,7 +139,7 @@ public class VisionScreen extends Screen {
                 }
             }
             case OPENING_VIDEO -> {
-                if (this.videoBackground.isFadedOut() && (this.videoPlayer.isEnded() || this.videoPlayer.isStopped() || this.videoPlayer.isBroken())) {
+                if (this.videoBackground.isFadedOut() && (videoPlayer.isEnded() || videoPlayer.isStopped() || videoPlayer.isBroken())) {
                     this.status = Status.CLOSING_VIDEO;
                 }
             }
@@ -154,16 +163,14 @@ public class VisionScreen extends Screen {
 
     @Override
     public void onClose() {
-        if (this.videoPlayer.isSafeUse() && this.videoPlayer.isPlaying()) {
-            this.videoPlayer.stop();
+        if (videoPlayer.isSafeUse() && videoPlayer.isPlaying()) {
+            videoPlayer.stop();
             return;
         }
         if (this.status != Status.CLOSING_GAME) {
             return;
         }
         Minecraft.getInstance().getSoundManager().resume();
-        this.videoPlayer.release();
-        this.textureWrapper.close();
         super.onClose();
     }
 
