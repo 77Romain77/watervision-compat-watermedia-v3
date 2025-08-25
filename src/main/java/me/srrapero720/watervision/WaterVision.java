@@ -1,6 +1,6 @@
 package me.srrapero720.watervision;
 
-import me.srrapero720.watervision.client.render.TextureWrapper;
+import me.srrapero720.watervision.client.render.RendererWrapper;
 import me.srrapero720.watervision.common.commands.VisionCommands;
 import me.srrapero720.watervision.common.network.VisionNetwork;
 import net.minecraft.client.Minecraft;
@@ -70,7 +70,7 @@ public class WaterVision {
         public static void clientSetup(final FMLClientSetupEvent event) {
             LOGGER.debug("Client setup...");
             event.enqueueWork(() -> {
-                Minecraft.getInstance().getTextureManager().register(LOADING_ANIM_TEXTURE, new TextureWrapper.Renderer(ImageAPI.loadingGif("watervision")));
+                Minecraft.getInstance().getTextureManager().register(LOADING_ANIM_TEXTURE, new RendererWrapper(ImageAPI.loadingGif("watervision")));
             });
         }
     }
@@ -81,6 +81,6 @@ public class WaterVision {
 
     @OnlyIn(Dist.CLIENT)
     public static float deltaFrames() {
-        return Minecraft.getInstance().isPaused() ? 1.0F : Minecraft.getInstance().getTimer().getGameTimeDeltaTicks();
+        return Minecraft.getInstance().isPaused() ? 1.0F : (Minecraft.getInstance().getFrameTimeNs() / 1_000_000_000.0F) * 20.0F;
     }
 }

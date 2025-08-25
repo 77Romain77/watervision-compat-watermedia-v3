@@ -1,6 +1,5 @@
 package me.srrapero720.watervision.client.screens;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import me.srrapero720.watervision.WaterVision;
 import me.srrapero720.watervision.client.render.TextureWrapper;
@@ -8,16 +7,12 @@ import me.srrapero720.watervision.client.screens.widgets.FadeBackground;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.texture.AbstractTexture;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraftforge.fml.loading.FMLLoader;
 import org.joml.Matrix4f;
-import org.lwjgl.opengl.GL11;
-import org.watermedia.api.image.ImageAPI;
-import org.watermedia.api.image.ImageRenderer;
 import org.watermedia.api.player.PlayerAPI;
 import org.watermedia.api.player.videolan.VideoPlayer;
 
@@ -40,7 +35,7 @@ public class VisionScreen extends Screen {
     private final boolean exit;
     // PLAYER
     private final VideoPlayer videoPlayer;
-    private final TextureWrapper textureWrapper;
+    private TextureWrapper textureWrapper;
 
     // STATE
     private Status status = Status.OPENING_GAME;
@@ -61,8 +56,6 @@ public class VisionScreen extends Screen {
         this.videoPlayer.setVolume(Mth.clamp(volume, 0, 100));
         this.videoPlayer.setSpeed(Mth.clamp(speed, 0.1f, 3f));
 
-        this.textureWrapper = new TextureWrapper(this.videoPlayer.texture());
-        Minecraft.getInstance().getTextureManager().register(TEXTURE, this.textureWrapper);
         this.videoPlayer.startPaused(uri);
         Minecraft.getInstance().getSoundManager().pause();
     }
@@ -137,21 +130,14 @@ public class VisionScreen extends Screen {
         final var pMinV = offsetY / height;
         final var pMaxV = (offsetY + height) / height;
 
-        RenderSystem.enableBlend();
-        final int tex = Minecraft.getInstance().textureManager.getTexture(texture).getId();
-        RenderSystem.bindTexture(tex);
-        RenderSystem.setShaderTexture(0, tex);
-        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, alpha);
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        final Matrix4f matrix4f = graphics.pose().last().pose();
-        final BufferBuilder bufferbuilder = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-        bufferbuilder.addVertex(matrix4f, pX1, pY1, pBlitOffset).setUv(pMinU, pMinV);
-        bufferbuilder.addVertex(matrix4f, pX1, pY2, pBlitOffset).setUv(pMinU, pMaxV);
-        bufferbuilder.addVertex(matrix4f, pX2, pY2, pBlitOffset).setUv(pMaxU, pMaxV);
-        bufferbuilder.addVertex(matrix4f, pX2, pY1, pBlitOffset).setUv(pMaxU, pMinV);
-        RenderSystem.texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
-        BufferUploader.drawWithShader(bufferbuilder.build());
-        RenderSystem.disableBlend();
+        graphics.drawSpecial(multiBufferSource -> {
+            final VertexConsumer bufferbuilder = multiBufferSource.getBuffer(RenderType.guiTextured(texture));
+            Matrix4f matrix4f = graphics.pose().last().pose();
+            bufferbuilder.addVertex(matrix4f, pX1, pY1, pBlitOffset).setColor(0xFFFFFFFF).setUv(pMinU, pMinV);
+            bufferbuilder.addVertex(matrix4f, pX1, pY2, pBlitOffset).setColor(0xFFFFFFFF).setUv(pMinU, pMaxV);
+            bufferbuilder.addVertex(matrix4f, pX2, pY2, pBlitOffset).setColor(0xFFFFFFFF).setUv(pMaxU, pMaxV);
+            bufferbuilder.addVertex(matrix4f, pX2, pY1, pBlitOffset).setColor(0xFFFFFFFF).setUv(pMaxU, pMinV);
+        });
     }
 
     @Override
@@ -161,6 +147,10 @@ public class VisionScreen extends Screen {
                 if (this.gameBackground.isFadedIn() && this.videoPlayer.isSafeUse() && this.videoPlayer.isReady()) {
                     this.status = Status.OPENING_VIDEO;
                     this.videoPlayer.play();
+                    if (this.textureWrapper == null) {
+                        this.textureWrapper = new TextureWrapper(this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height());
+                        Minecraft.getInstance().getTextureManager().register(TEXTURE, this.textureWrapper);
+                    }
                 }
             }
             case OPENING_VIDEO -> {
@@ -197,6 +187,7 @@ public class VisionScreen extends Screen {
         }
         Minecraft.getInstance().getSoundManager().resume();
         this.videoPlayer.release();
+        this.textureWrapper.close();
         super.onClose();
     }
 
