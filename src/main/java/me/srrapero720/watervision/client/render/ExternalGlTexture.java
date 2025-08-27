@@ -6,6 +6,6 @@ import org.watermedia.api.image.ImageRenderer;
 
 public class ExternalGlTexture extends GlTexture {
     protected ExternalGlTexture(int width, int height, int glId) {
-        super("texturewrapper_" + glId, TextureFormat.RGBA8, width, height, 1, glId, false);
+        super(1, "texturewrapper_" + glId, TextureFormat.RGBA8, width, height, 1, 1, glId);
     }
 }

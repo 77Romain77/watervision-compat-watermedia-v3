@@ -10,7 +10,7 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.client.event.RegisterClientCommandsEvent;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.eventbus.api.listener.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
@@ -46,11 +46,9 @@ public class WaterVision {
         }
 
         @SubscribeEvent
-        public static void onLevelTick(final TickEvent.ClientTickEvent event) {
-            if (event.phase == TickEvent.Phase.START) {
-                if (ticks == Integer.MAX_VALUE) ticks = 0;
-                ticks++;
-            }
+        public static void onLevelTick(final TickEvent.ClientTickEvent.Post event) {
+            if (ticks == Integer.MAX_VALUE) ticks = 0;
+            ticks++;
         }
     }
 

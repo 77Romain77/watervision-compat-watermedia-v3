@@ -1,7 +1,9 @@
 package me.srrapero720.watervision.client.render;
 
 import com.mojang.blaze3d.opengl.GlTexture;
+import com.mojang.blaze3d.opengl.GlTextureView;
 import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.blaze3d.textures.GpuTextureView;
 import me.srrapero720.watervision.WaterVision;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraftforge.api.distmarker.Dist;
@@ -13,15 +15,23 @@ import org.watermedia.api.image.ImageRenderer;
 public class RendererWrapper extends AbstractTexture {
     private final ImageRenderer renderer;
     private final GlTexture[] glTextures;
+    private final GlTextureView[] glTextureViews;
 
     public RendererWrapper(final ImageRenderer imageRenderer) {
         super();
         this.renderer = imageRenderer;
         this.glTextures = new GlTexture[this.renderer.textures.length];
+        this.glTextureViews = new GlTextureView[this.renderer.textures.length];
         for (int i = 0; i < this.glTextures.length; i++) {
             this.glTextures[i] = new ExternalGlTexture(this.renderer.width, this.renderer.height, this.renderer.texture(i));
+            this.glTextureViews[i] = new GlTextureView(this.glTextures[i], 1, 1) {
+                @Override
+                public void close() {
+                }
+            };
         }
         this.texture = this.glTextures[0];
+        this.textureView = this.glTextureViews[0];
     }
 
     @Override
@@ -47,10 +57,18 @@ public class RendererWrapper extends AbstractTexture {
         final int id = this.renderer.texture(WaterVision.getTicks(), WaterVision.deltaFrames(), true);
         for (int i = 0; i < this.renderer.textures.length; i++) {
             if (this.glTextures[i].glId() == id) {
+                this.textureView = this.glTextureViews[i];
                 return this.texture = this.glTextures[i];
             }
         }
+        this.textureView = this.glTextureViews[0];
         return this.texture = this.glTextures[0];
+    }
+
+    @Override
+    public GpuTextureView getTextureView() {
+        this.getTexture();
+        return super.getTextureView();
     }
 
     @Override
