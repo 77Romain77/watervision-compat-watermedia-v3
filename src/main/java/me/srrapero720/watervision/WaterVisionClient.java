@@ -2,18 +2,26 @@ package me.srrapero720.watervision;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
+import me.srrapero720.watervision.client.render.TextureWrapper;
 import me.srrapero720.watervision.client.screens.VisionScreen;
+import me.srrapero720.watervision.common.commands.VisionCommands;
+import me.srrapero720.watervision.common.network.VisionNetwork;
+import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
 import org.joml.Matrix4f;
+import org.watermedia.api.image.ImageAPI;
 
 import java.net.URI;
 
-public class WaterVisionClient {
+public class WaterVisionClient implements ClientModInitializer {
     public static final int DEF_VOLUME = 100;
     public static final float DEF_SPEED = 1.0f;
     public static final boolean DEF_STRETCH = false;
@@ -22,30 +30,49 @@ public class WaterVisionClient {
     public static final boolean DEF_CONTROLS = true;
     public static final boolean DEF_EXIT = true;
 
+    @Override
+    public void onInitializeClient() {
 
-    @OnlyIn(Dist.CLIENT)
+        ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
+            client.getTextureManager().register(WaterVision.LOADING_ANIM_TEXTURE, new TextureWrapper.Renderer(ImageAPI.loadingGif("watervision")));
+        });
+
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (WaterVision.ticks == Integer.MAX_VALUE) WaterVision.ticks = 0;
+            WaterVision.ticks++;
+        });
+
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
+                VisionCommands.registerClient(dispatcher)
+        );
+
+        VisionNetwork.initClient();
+    }
+
+
+    @Environment(EnvType.CLIENT)
     public static void openScreen(final URI uri, final int volume, final float speed, final boolean stretchVideo, final float gameFadeDuration, final float videoFadeDuration, final boolean controls, final boolean exit) {
         Minecraft.getInstance().setScreen(new VisionScreen(uri, volume, speed, stretchVideo, gameFadeDuration, videoFadeDuration, controls, exit));
     }
 
-    @OnlyIn(Dist.CLIENT)
+    @Environment(EnvType.CLIENT)
     public static void closeScreen() {
         if (Minecraft.getInstance().screen instanceof VisionScreen) {
             Minecraft.getInstance().setScreen(null);
         }
     }
 
-    @OnlyIn(Dist.CLIENT)
+    @Environment(EnvType.CLIENT)
     public static void openOverlay(final URI uri) {
         VisionOverlay.uri = uri;
     }
 
-    @OnlyIn(Dist.CLIENT)
+    @Environment(EnvType.CLIENT)
     public static void closeOverlay() {
         VisionOverlay.uri = null;
     }
 
-    @OnlyIn(Dist.CLIENT)
+    @Environment(EnvType.CLIENT)
     public static void internal$blit(final GuiGraphics graphics, final ResourceLocation texture, final float alpha, final int x, final int y, final int offsetX, final int offsetY, final int width, final int height) {
         final float pX1 = x;
         final float pX2 = x + width;
@@ -58,7 +85,7 @@ public class WaterVisionClient {
         final var pMaxV = (offsetY + height) / height;
 
         RenderSystem.enableBlend();
-        final int tex = Minecraft.getInstance().textureManager.getTexture(texture).getId();
+        final int tex = Minecraft.getInstance().getTextureManager().getTexture(texture).getId();
         RenderSystem.bindTexture(tex);
         RenderSystem.setShaderTexture(0, tex);
         RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, alpha);

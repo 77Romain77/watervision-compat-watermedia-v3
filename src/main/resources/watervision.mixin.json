@@ -9,6 +9,7 @@
   ],
   "client": [
     "ConnectionMixin",
+    "GuiMixin",
     "IntegratedServerMixin",
     "MinecraftMixin"
   ],

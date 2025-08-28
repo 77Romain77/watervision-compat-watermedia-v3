@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "$modid",
+  "version": "$modversion",
+  "name": "$modname",
+  "description": "$moddesc",
+  "authors": [
+    "$modauthors"
+  ],
+  "contact": {
+    "homepage": "https://www.curseforge.com/minecraft/mc-mods/watervision",
+    "sources": "https://github.com/${github}",
+    "issues": "https://github.com/${github}/issues"
+  },
+  "license": "$license",
+  "icon": "pack.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "me.srrapero720.watervision.WaterVision"
+    ],
+    "client": [
+      "me.srrapero720.watervision.WaterVisionClient"
+    ]
+  },
+  "mixins": [
+    "$modid.$mixin_file_suffix"
+  ],
+  "accessWidener": "${modid}.accesswidener",
+  "depends": {
+    "fabricloader": ">=0.15",
+    "minecraft": "~$minecraftversion",
+    "java": ">=17",
+    "fabric-api": "*",
+    "watermedia": "$watermediarange"
+  }
+}

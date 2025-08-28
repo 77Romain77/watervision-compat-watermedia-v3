@@ -5,16 +5,11 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.RenderGuiOverlayEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
 import org.watermedia.api.player.PlayerAPI;
 import org.watermedia.api.player.videolan.VideoPlayer;
 
 import java.net.URI;
 
-@Mod.EventBusSubscriber(modid = WaterVision.ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public class VisionOverlay {
     private static final int PADDING = 8;
     private static VideoPlayer player;
@@ -28,8 +23,7 @@ public class VisionOverlay {
         }
     }
 
-    @SubscribeEvent
-    public static void onRenderOverlayPost(final RenderGuiOverlayEvent.Pre e) {
+    public static void onRenderOverlayPost(final GuiGraphics graphics) {
         if (uri != null && player == null) {
             player = new VideoPlayer(PlayerAPI.getFactory(), Minecraft.getInstance());
             Minecraft.getInstance().getTextureManager().register(TEXTURE, new TextureWrapper(player.texture()));
@@ -62,7 +56,6 @@ public class VisionOverlay {
 
         if (player.isSafeUse() && player.isPlaying()) {
             player.preRender();
-            final GuiGraphics graphics = e.getGuiGraphics();
 
             final int screenWidth = graphics.guiWidth();
             final int screenHeight = graphics.guiHeight();
