@@ -14,8 +14,9 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.network.chat.Component;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.net.URI;
 
@@ -174,7 +175,7 @@ public class VisionCommands {
             final var exit = getBoolOrDefault(context, "allow_exit", true);
 
             for (final var player: players) {
-                VisionNetwork.sendTo(new PlayVideoPacket(url, volume, speed, stretchVideo, gameFadeDuration, videoFadeDuration, allowControls, exit), player);
+                PacketDistributor.sendToPlayer(player, new PlayVideoPacket(url, volume, speed, stretchVideo, gameFadeDuration, videoFadeDuration, allowControls, exit));
             }
 
             return 0;

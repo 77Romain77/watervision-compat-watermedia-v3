@@ -10,7 +10,8 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
-import net.minecraftforge.fml.loading.FMLLoader;
+import net.neoforged.fml.loading.FMLLoader;
+import org.joml.Matrix4f;
 import org.watermedia.api.player.PlayerAPI;
 import org.watermedia.api.player.videolan.VideoPlayer;
 
@@ -33,7 +34,7 @@ public class VisionScreen extends Screen {
     private final boolean exit;
     // PLAYER
     private final VideoPlayer videoPlayer;
-    private final TextureWrapper textureWrapper;
+    private TextureWrapper textureWrapper;
 
     // STATE
     private Status status = Status.OPENING_GAME;
@@ -54,8 +55,6 @@ public class VisionScreen extends Screen {
         this.videoPlayer.setVolume(Mth.clamp(volume, 0, 100));
         this.videoPlayer.setSpeed(Mth.clamp(speed, 0.1f, 3f));
 
-        this.textureWrapper = new TextureWrapper(this.videoPlayer.texture());
-        Minecraft.getInstance().getTextureManager().register(TEXTURE, this.textureWrapper);
         this.videoPlayer.startPaused(uri);
         Minecraft.getInstance().getSoundManager().pause();
     }
@@ -124,6 +123,10 @@ public class VisionScreen extends Screen {
                 if (this.gameBackground.isFadedIn() && this.videoPlayer.isSafeUse() && this.videoPlayer.isReady()) {
                     this.status = Status.OPENING_VIDEO;
                     this.videoPlayer.play();
+                    if (this.textureWrapper == null) {
+                        this.textureWrapper = new TextureWrapper(this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height());
+                        Minecraft.getInstance().getTextureManager().register(TEXTURE, this.textureWrapper);
+                    }
                 }
             }
             case OPENING_VIDEO -> {
@@ -160,6 +163,7 @@ public class VisionScreen extends Screen {
         }
         Minecraft.getInstance().getSoundManager().resume();
         this.videoPlayer.release();
+        this.textureWrapper.close();
         super.onClose();
     }
 

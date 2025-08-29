@@ -1,21 +1,18 @@
 package me.srrapero720.watervision;
 
-import me.srrapero720.watervision.client.render.TextureWrapper;
+import me.srrapero720.watervision.client.render.RendererWrapper;
 import me.srrapero720.watervision.common.commands.VisionCommands;
-import me.srrapero720.watervision.common.network.VisionNetwork;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
-import net.minecraftforge.client.event.AddGuiOverlayLayersEvent;
-import net.minecraftforge.client.event.RegisterClientCommandsEvent;
-import net.minecraftforge.event.RegisterCommandsEvent;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
-import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.Marker;
@@ -30,11 +27,11 @@ public class WaterVision {
     public static final ResourceLocation LOADING_ANIM_TEXTURE = ResourceLocation.tryBuild(ID, "loading_animation");
     private static int ticks = 0;
 
-    public WaterVision(FMLJavaModLoadingContext context) {
+    public WaterVision() {
 
     }
 
-    @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.FORGE)
+    @EventBusSubscriber
     public static class CommonEvents {
         @SubscribeEvent
         public static void onCommandsRegister(final RegisterCommandsEvent event) {
@@ -47,38 +44,19 @@ public class WaterVision {
         }
 
         @SubscribeEvent
-        public static void onLevelTick(final TickEvent.ClientTickEvent event) {
-            if (event.phase == TickEvent.Phase.START) {
-                if (ticks == Integer.MAX_VALUE) ticks = 0;
-                ticks++;
-            }
+        public static void onLevelTick(final ClientTickEvent.Pre event) {
+            if (ticks == Integer.MAX_VALUE) ticks = 0;
+            ticks++;
         }
     }
-
-    @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.MOD)
-    public static class RegistryEvents {
-
-        @SubscribeEvent
-        public static void setup(final FMLCommonSetupEvent event) {
-            LOGGER.debug("Registering Network...");
-            event.enqueueWork(VisionNetwork::init);
-        }
-    }
-
-    @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
+    @EventBusSubscriber(value = Dist.CLIENT)
     public static class ClientRegistryEvents {
         @SubscribeEvent
         public static void clientSetup(final FMLClientSetupEvent event) {
             LOGGER.debug("Client setup...");
             event.enqueueWork(() -> {
-                Minecraft.getInstance().getTextureManager().register(LOADING_ANIM_TEXTURE, new TextureWrapper.Renderer(ImageAPI.loadingGif("watervision")));
+                Minecraft.getInstance().getTextureManager().register(LOADING_ANIM_TEXTURE, new RendererWrapper(ImageAPI.loadingGif("watervision")));
             });
-        }
-
-        @SubscribeEvent
-        public static void addCustomLayer(final AddGuiOverlayLayersEvent e) {
-            e.getLayeredDraw().add(ResourceLocation.tryBuild(ID, "overlay_layer"), new VisionOverlay());
-
         }
     }
 
@@ -88,6 +66,6 @@ public class WaterVision {
 
     @OnlyIn(Dist.CLIENT)
     public static float deltaFrames() {
-        return Minecraft.getInstance().isPaused() ? 1.0F : Minecraft.getInstance().getTimer().getGameTimeDeltaTicks();
+        return Minecraft.getInstance().isPaused() ? 1.0F : (Minecraft.getInstance().getFrameTimeNs() / 1_000_000_000.0F) * 20.0F;
     }
 }

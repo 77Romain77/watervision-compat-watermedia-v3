@@ -1,25 +1,22 @@
 package me.srrapero720.watervision;
 
 import me.srrapero720.watervision.client.render.TextureWrapper;
-import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.LayeredDraw;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.ClientPauseChangeEvent;
-import net.minecraftforge.client.event.CustomizeGuiOverlayEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.ClientPauseChangeEvent;
+import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import org.watermedia.api.player.PlayerAPI;
 import org.watermedia.api.player.videolan.VideoPlayer;
 
 import java.net.URI;
 
-@Mod.EventBusSubscriber(modid = WaterVision.ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
-public class VisionOverlay implements LayeredDraw.Layer {
+@EventBusSubscriber(modid = WaterVision.ID, value = Dist.CLIENT)
+public class VisionOverlay {
     private static final int PADDING = 8;
     private static VideoPlayer player;
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "overlay_texture");
@@ -41,12 +38,11 @@ public class VisionOverlay implements LayeredDraw.Layer {
         uri = null;
     }
 
-
-    @Override
-    public void render(GuiGraphics graphics, DeltaTracker p_344084_) {
+    @SubscribeEvent
+    public static void onRenderGui(final RenderGuiEvent.Post e) {
         if (uri != null && player == null) {
             player = new VideoPlayer(PlayerAPI.getFactory(), Minecraft.getInstance());
-            Minecraft.getInstance().getTextureManager().register(TEXTURE, new TextureWrapper(player.texture()));
+            Minecraft.getInstance().getTextureManager().register(TEXTURE, new TextureWrapper(player.texture(), player.width(), player.height()));
             player.start(uri);
             activeUri = uri;
         }
@@ -76,6 +72,7 @@ public class VisionOverlay implements LayeredDraw.Layer {
 
         if (player.isSafeUse() && player.isPlaying()) {
             player.preRender();
+            final GuiGraphics graphics = e.getGuiGraphics();
 
             final int screenWidth = graphics.guiWidth();
             final int screenHeight = graphics.guiHeight();

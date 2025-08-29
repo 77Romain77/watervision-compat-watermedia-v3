@@ -1,0 +1,36 @@
+modLoader="javafml"
+loaderVersion="${fmlrange}"
+issueTrackerURL="https://github.com/${github}/issues"
+logoFile="pack.png"
+license="${license}"
+
+[[mods]]
+    modId="${modid}"
+    version="${modversion}"
+    displayName="${modname}"
+    displayURL="https://www.curseforge.com/minecraft/mc-mods/waterframes"
+    credits="${modcredits}"
+    authors="${modauthors}"
+    logoFile="pack.png"
+    side="BOTH"
+    description='''${moddesc}'''
+
+[[mixins]]
+    config="$modid.$mixin_file_suffix"
+
+[[accessTransformers]]
+    file="META-INF/accesstransformer.cfg"
+
+[[dependencies.${modid}]]
+    modId="neoforge"
+    type="required"
+    versionRange="${forgerange}"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${modid}]]
+    modId="watermedia"
+    type="required"
+    ordering="AFTER"
+    side="CLIENT"
+    versionRange="${watermediarange}"
