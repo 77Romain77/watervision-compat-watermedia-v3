@@ -7,8 +7,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Matrix4f;
 
 import java.net.URI;
@@ -59,7 +59,7 @@ public class WaterVisionClient {
         final var pMaxV = (offsetY + height) / height;
 
         RenderSystem.enableBlend();
-        final int tex = Minecraft.getInstance().textureManager.getTexture(texture).getId();
+        final int tex = Minecraft.getInstance().getTextureManager().getTexture(texture).getId();
         RenderSystem.bindTexture(tex);
         RenderSystem.setShaderTexture(0, tex);
         RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, alpha);

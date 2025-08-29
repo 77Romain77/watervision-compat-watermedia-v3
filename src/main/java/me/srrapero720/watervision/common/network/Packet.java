@@ -1,38 +1,25 @@
 package me.srrapero720.watervision.common.network;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
-import net.minecraftforge.event.network.CustomPayloadEvent;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-public interface Packet {
+public interface Packet extends CustomPacketPayload {
 
-    default void exec(CustomPayloadEvent.Context context) {
-        context.enqueueWork(() -> this.exectute(context.isClientSide(), context.getSender()));
-        context.setPacketHandled(true);
+    default void exec(IPayloadContext context) {
+        context.enqueueWork(() -> this.exectute(context.connection().getDirection().isClientbound(), context.player()));
     }
 
     private void exectute(boolean client, Player player) {
         if (client) {
-            this.executeClient();
+            this.execClient(player);
         } else {
-            final ServerPlayer sender = (ServerPlayer) player;
-            this.execServer(sender);
-            if (sender != null) {
-                VisionNetwork.sendToClient(this, sender.level(), sender.blockPosition());
-            }
+            this.execServer((ServerPlayer) player);
         }
     }
 
-    @OnlyIn(Dist.CLIENT)
-    private void executeClient() {
-        this.execClient(Minecraft.getInstance().player);
-    }
-
-    @OnlyIn(Dist.CLIENT)
     void execClient(Player player);
     void execServer(ServerPlayer player);
 

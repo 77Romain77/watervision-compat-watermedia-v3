@@ -3,8 +3,8 @@ package me.srrapero720.watervision.client.render;
 import me.srrapero720.watervision.WaterVision;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.server.packs.resources.ResourceManager;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.NotNull;
 import org.watermedia.api.image.ImageRenderer;
 
