@@ -23,8 +23,8 @@ import java.net.URI;
 
 public class VisionCommands {
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
-        dispatcher.register(Commands.literal("video")
-                .requires(source -> source.hasPermission(4))
+        dispatcher.register(Commands.literal("playvideo")
+                .requires(source -> !source.isPlayer() || source.hasPermission(4))
                 .then(Commands.argument("url", StringArgumentType.string())
                         .then(Commands.argument("target", EntityArgument.players())
                                 .executes(VisionCommands::openVideoScreen)
@@ -58,8 +58,7 @@ public class VisionCommands {
 
     @OnlyIn(Dist.CLIENT)
     public static void registerClient(CommandDispatcher<CommandSourceStack> dispatcher) {
-        dispatcher.register(Commands.literal("videoclient")
-                .requires(source -> source.hasPermission(4))
+        dispatcher.register(Commands.literal("playvideoclient")
                 .then(Commands.argument("url", StringArgumentType.string())
                         .executes(VisionCommands::openVideoScreenClient)
                         .then(Commands.argument("volume", IntegerArgumentType.integer(0, 100))
