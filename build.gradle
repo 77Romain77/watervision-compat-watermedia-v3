@@ -71,6 +71,9 @@ repositories {
         content { includeGroup "curse.maven" }
     }
     maven { url 'https://jitpack.io' }
+    flatDir {
+        dirs 'libs'
+    }
 }
 
 configurations {
@@ -92,7 +95,8 @@ dependencies {
     annotationProcessor "net.fabricmc:sponge-mixin:${mixin_fabric_version}+mixin.${mixin_version}"
 
     // DEPENDENCIES
-    implementation "com.github.WaterMediaTeam:watermedia:$watermediaversion"
+//    implementation "com.github.WaterMediaTeam:watermedia:$watermediaversion"
+    implementation "blank:watermedia:3.0.0-alpha.0"
 
     // JARJAR MIXIN EXTRA
     compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:${mixinextra_version}"))

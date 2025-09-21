@@ -18,7 +18,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.MarkerManager;
-import org.watermedia.api.image.ImageAPI;
 
 @Mod(WaterVision.ID)
 @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.FORGE)
@@ -63,7 +62,7 @@ public class WaterVision {
         public static void clientSetup(final FMLClientSetupEvent event) {
             LOGGER.debug("Client setup...");
             event.enqueueWork(() -> {
-                Minecraft.getInstance().getTextureManager().register(LOADING_ANIM_TEXTURE, new TextureWrapper.Renderer(ImageAPI.loadingGif("watervision")));
+                Minecraft.getInstance().getTextureManager().register(LOADING_ANIM_TEXTURE, new TextureWrapper(0));
             });
         }
     }

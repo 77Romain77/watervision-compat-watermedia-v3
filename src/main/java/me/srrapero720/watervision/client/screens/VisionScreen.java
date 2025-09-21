@@ -16,10 +16,8 @@ import net.minecraft.util.Mth;
 import net.minecraftforge.fml.loading.FMLLoader;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
-import org.watermedia.api.image.ImageAPI;
-import org.watermedia.api.image.ImageRenderer;
-import org.watermedia.api.player.PlayerAPI;
-import org.watermedia.api.player.videolan.VideoPlayer;
+import org.watermedia.api.media.FFMediaPlayer;
+import org.watermedia.api.media.MediaPlayer;
 
 import java.net.URI;
 import java.text.DateFormat;
@@ -39,7 +37,7 @@ public class VisionScreen extends Screen {
     private final boolean controls;
     private final boolean exit;
     // PLAYER
-    private final VideoPlayer videoPlayer;
+    private final MediaPlayer videoPlayer;
     private final TextureWrapper textureWrapper;
 
     // STATE
@@ -57,13 +55,13 @@ public class VisionScreen extends Screen {
         this.videoBackground = new FadeBackground(videoFadeDuration);
         this.videoBackground.forceFadeIn();
 
-        this.videoPlayer = new VideoPlayer(PlayerAPI.getFactory(), Minecraft.getInstance());
-        this.videoPlayer.setVolume(Mth.clamp(volume, 0, 100));
-        this.videoPlayer.setSpeed(Mth.clamp(speed, 0.1f, 3f));
+        this.videoPlayer = new FFMediaPlayer(uri, Thread.currentThread(), Minecraft.getInstance(), true, true);
+        this.videoPlayer.volume(Mth.clamp(volume, 0, 100));
+        this.videoPlayer.speed(Mth.clamp(speed, 0.1f, 3f));
 
         this.textureWrapper = new TextureWrapper(this.videoPlayer.texture());
         Minecraft.getInstance().getTextureManager().register(TEXTURE, this.textureWrapper);
-        this.videoPlayer.startPaused(uri);
+        this.videoPlayer.startPaused();
         Minecraft.getInstance().getSoundManager().pause();
     }
 
@@ -72,7 +70,6 @@ public class VisionScreen extends Screen {
         this.gameBackground.render(guiGraphics, this.width, this.height, this.status != Status.CLOSING_GAME, partialTick);
 
         if (this.status == Status.OPENING_VIDEO || this.status == Status.CLOSING_VIDEO) {
-            this.videoPlayer.preRender();
             if (this.stretch) {
                 this.render$blit(guiGraphics, TEXTURE, 1, 0, 0, 0, 0, this.width, this.height);
             } else {
@@ -87,16 +84,16 @@ public class VisionScreen extends Screen {
             this.videoBackground.render(guiGraphics, this.width, this.height, this.status == Status.CLOSING_VIDEO, partialTick);
         }
 
-        if (this.status == Status.OPENING_GAME || this.status == Status.CLOSING_VIDEO || this.status == Status.CLOSING_GAME || this.videoPlayer.isBuffering() || this.videoPlayer.isLoading()) {
+        if (this.status == Status.OPENING_GAME || this.status == Status.CLOSING_VIDEO || this.status == Status.CLOSING_GAME || this.videoPlayer.buffering() || this.videoPlayer.loading()) {
             this.render$loadingIcon(guiGraphics, partialTick);
         }
 
         // DEBUG
         if (!FMLLoader.isProduction()) {
-            if (!this.videoPlayer.isSafeUse()) return;
-            guiGraphics.drawString(this.font, String.format("State: %s", this.videoPlayer.getStateName()), 0, (this.height / 2) - 12, 0xFFFFFF);
-            guiGraphics.drawString(this.font, String.format("Time: %s (%s) / %s (%s)", FORMAT.format(new Date(this.videoPlayer.getTime())), this.videoPlayer.getTime(), FORMAT.format(new Date(this.videoPlayer.getDuration())), this.videoPlayer.getDuration()), 0, (this.height / 2), 0xFFFFFF);
-            guiGraphics.drawString(this.font, String.format("Media Duration: %s (%s)", FORMAT.format(new Date(this.videoPlayer.getMediaInfoDuration())), this.videoPlayer.getMediaInfoDuration()), 0, (this.height / 2) + 12, 0xFFFFFF);
+            if (!this.videoPlayer.canPlay()) return;
+            guiGraphics.drawString(this.font, String.format("State: %s", this.videoPlayer.status().name()), 0, (this.height / 2) - 12, 0xFFFFFF);
+            guiGraphics.drawString(this.font, String.format("Time: %s (%s) / %s (%s)", FORMAT.format(new Date(this.videoPlayer.time())), this.videoPlayer.time(), FORMAT.format(new Date(this.videoPlayer.duration())), this.videoPlayer.duration()), 0, (this.height / 2), 0xFFFFFF);
+            guiGraphics.drawString(this.font, String.format("Media Duration: %s (%s)", FORMAT.format(new Date(this.videoPlayer.duration())), this.videoPlayer.duration()), 0, (this.height / 2) + 12, 0xFFFFFF);
             guiGraphics.drawString(this.font, String.format("Orchestrator Status: %s", this.status.name()), 0, (this.height / 2) + 24, 0xFFFFFF);
             guiGraphics.drawString(this.font, String.format("Video Size: %sx%s", this.videoPlayer.width(), this.videoPlayer.height()), 0, (this.height / 2) + 36, 0xFFFFFF);
         }
@@ -162,13 +159,13 @@ public class VisionScreen extends Screen {
     public void tick() {
         switch (this.status) {
             case OPENING_GAME -> {
-                if (this.gameBackground.isFadedIn() && this.videoPlayer.isSafeUse() && this.videoPlayer.isReady()) {
+                if (this.gameBackground.isFadedIn() && this.videoPlayer.canPlay()) {
                     this.status = Status.OPENING_VIDEO;
-                    this.videoPlayer.play();
+                    this.videoPlayer.resume();
                 }
             }
             case OPENING_VIDEO -> {
-                if (this.videoBackground.isFadedOut() && (this.videoPlayer.isEnded() || this.videoPlayer.isStopped() || this.videoPlayer.isBroken())) {
+                if (this.videoBackground.isFadedOut() && (this.videoPlayer.ended() || this.videoPlayer.stopped() || this.videoPlayer.error())) {
                     this.status = Status.CLOSING_VIDEO;
                 }
             }
@@ -192,7 +189,7 @@ public class VisionScreen extends Screen {
 
     @Override
     public void onClose() {
-        if (this.videoPlayer.isSafeUse() && this.videoPlayer.isPlaying()) {
+        if (this.videoPlayer.playing()) {
             this.videoPlayer.stop();
             return;
         }
