@@ -32,6 +32,8 @@ public class VisionNetwork {
         // Register Packets
         register(PlayVideoPacket.class, PlayVideoPacket::new);
         register(PlayVideoOverlayPacket.class, PlayVideoOverlayPacket::new);
+        register(StopVideoPacket.class, StopVideoPacket::new);
+        register(StopVideoOverlayPacket.class, StopVideoOverlayPacket::new);
     }
 
     private static <T extends Packet<T>> void register(Class<T> clazz, Supplier<T> factory) {

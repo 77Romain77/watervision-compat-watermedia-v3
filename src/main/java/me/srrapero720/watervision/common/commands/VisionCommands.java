@@ -9,11 +9,7 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import me.srrapero720.watervision.WaterVision;
 import me.srrapero720.watervision.WaterVisionClient;
-import me.srrapero720.watervision.client.screens.VisionScreen;
-import me.srrapero720.watervision.common.network.PlayVideoOverlayPacket;
-import me.srrapero720.watervision.common.network.PlayVideoPacket;
-import me.srrapero720.watervision.common.network.VisionNetwork;
-import net.minecraft.client.Minecraft;
+import me.srrapero720.watervision.common.network.*;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
@@ -57,6 +53,13 @@ public class VisionCommands {
                 )
         );
 
+
+        dispatcher.register(Commands.literal("stopvideo")
+                .requires(source -> !source.isPlayer() || source.hasPermission(4))
+                .then(Commands.argument("target", EntityArgument.players())
+                        .executes(VisionCommands::stopVideo)
+                )
+        );
         dispatcher.register(Commands.literal("playoverlay")
                 .requires(source -> !source.isPlayer() || source.hasPermission(4))
                 .then(Commands.argument("url", StringArgumentType.string())
@@ -65,11 +68,19 @@ public class VisionCommands {
                         )
                 )
         );
+
+        dispatcher.register(Commands.literal("stopoverlay")
+                .requires(source -> !source.isPlayer() || source.hasPermission(4))
+                .then(Commands.argument("target", EntityArgument.players())
+                        .executes(VisionCommands::closeVideoOverlay)
+                )
+        );
     }
 
     @OnlyIn(Dist.CLIENT)
     public static void registerClient(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("playvideoclient")
+                .requires(source -> source.getEntity() != null)
                 .then(Commands.argument("url", StringArgumentType.string())
                         .executes(VisionCommands::openVideoScreenClient)
                         .then(Commands.argument("volume", IntegerArgumentType.integer(0, 100))
@@ -82,6 +93,18 @@ public class VisionCommands {
                                 )
                         )
                 )
+        );
+
+        dispatcher.register(Commands.literal("playoverlayclient")
+                .requires(source -> source.getEntity() != null)
+                .then(Commands.argument("url", StringArgumentType.string())
+                        .executes(VisionCommands::openVideoOverlayClient)
+                )
+        );
+
+        dispatcher.register(Commands.literal("stopoverlayclient")
+                .requires(source -> source.getEntity() != null)
+                .executes(VisionCommands::closeVideoOverlayClient)
         );
     }
 
@@ -100,6 +123,41 @@ public class VisionCommands {
             WaterVision.LOGGER.error("Failed to execute /playvideoclient command", e);
         }
 
+        return 1;
+    }
+
+    @OnlyIn(Dist.CLIENT)
+    private static int openVideoOverlayClient(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        try {
+            final var url = StringArgumentType.getString(context, "url");
+
+            WaterVisionClient.openOverlay(URI.create(url));
+            return 0;
+        } catch (Exception e) {
+            context.getSource().sendFailure(Component.literal("Failed to open video screen, see console for more details"));
+            WaterVision.LOGGER.error("Failed to execute /playoverlay command", e);
+
+            if (e instanceof CommandSyntaxException) {
+                throw e;
+            }
+        }
+        return 1;
+    }
+
+    @OnlyIn(Dist.CLIENT)
+    private static int closeVideoOverlayClient(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        try {
+
+            WaterVisionClient.closeOverlay();
+            return 0;
+        } catch (Exception e) {
+            context.getSource().sendFailure(Component.literal("Failed to open video screen, see console for more details"));
+            WaterVision.LOGGER.error("Failed to execute /playoverlay command", e);
+
+            if (e instanceof CommandSyntaxException) {
+                throw e;
+            }
+        }
         return 1;
     }
 
@@ -139,6 +197,46 @@ public class VisionCommands {
 
             for (final var player: players) {
                 VisionNetwork.sendTo(new PlayVideoOverlayPacket(url), player);
+            }
+
+            return 0;
+        } catch (Exception e) {
+            context.getSource().sendFailure(Component.literal("Failed to open video screen, see console for more details"));
+            WaterVision.LOGGER.error("Failed to execute /playoverlay command", e);
+
+            if (e instanceof CommandSyntaxException) {
+                throw e;
+            }
+        }
+        return 1;
+    }
+
+    private static int closeVideoOverlay(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        try {
+            final var players = EntityArgument.getPlayers(context, "target");
+
+            for (final var player: players) {
+                VisionNetwork.sendTo(new StopVideoOverlayPacket(), player);
+            }
+
+            return 0;
+        } catch (Exception e) {
+            context.getSource().sendFailure(Component.literal("Failed to open video screen, see console for more details"));
+            WaterVision.LOGGER.error("Failed to execute /playoverlay command", e);
+
+            if (e instanceof CommandSyntaxException) {
+                throw e;
+            }
+        }
+        return 1;
+    }
+
+    private static int stopVideo(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        try {
+            final var players = EntityArgument.getPlayers(context, "target");
+
+            for (final var player: players) {
+                VisionNetwork.sendTo(new StopVideoPacket(), player);
             }
 
             return 0;

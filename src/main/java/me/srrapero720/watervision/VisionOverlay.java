@@ -49,6 +49,12 @@ public class VisionOverlay {
             return;
         }
 
+        if (uri == null && activeUri != null) {
+            player.release();
+            player = null;
+            activeUri = null;
+        }
+
         if (activeUri != uri) {
             player.start(uri);
             activeUri = uri;
@@ -78,7 +84,9 @@ public class VisionOverlay {
     }
 
     public static void onClientDisconnect() {
-        player.release();
+        if (player != null) {
+            player.release();
+        }
         player = null;
         uri = null;
     }

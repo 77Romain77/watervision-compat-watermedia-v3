@@ -36,8 +36,20 @@ public class WaterVisionClient {
     }
 
     @OnlyIn(Dist.CLIENT)
+    public static void closeScreen() {
+        if (Minecraft.getInstance().screen instanceof VisionScreen) {
+            Minecraft.getInstance().setScreen(null);
+        }
+    }
+
+    @OnlyIn(Dist.CLIENT)
     public static void openOverlay(final URI uri) {
         VisionOverlay.uri = uri;
+    }
+
+    @OnlyIn(Dist.CLIENT)
+    public static void closeOverlay() {
+        VisionOverlay.uri = null;
     }
 
     @OnlyIn(Dist.CLIENT)
