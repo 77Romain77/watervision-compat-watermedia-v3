@@ -1,6 +1,5 @@
 package me.srrapero720.watervision.common.network;
 
-import me.srrapero720.watervision.WaterVision;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;

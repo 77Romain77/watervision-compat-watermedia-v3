@@ -2,7 +2,6 @@ package me.srrapero720.watervision;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
-import me.srrapero720.watervision.client.render.TextureWrapper;
 import me.srrapero720.watervision.client.screens.VisionScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -10,13 +9,7 @@ import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
-import net.minecraftforge.client.event.RenderGuiOverlayEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
 import org.joml.Matrix4f;
-import org.lwjgl.opengl.GL11;
-import org.watermedia.api.player.PlayerAPI;
-import org.watermedia.api.player.videolan.VideoPlayer;
 
 import java.net.URI;
 

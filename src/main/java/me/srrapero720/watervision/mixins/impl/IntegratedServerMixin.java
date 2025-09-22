@@ -1,7 +1,6 @@
 package me.srrapero720.watervision.mixins.impl;
 
 import me.srrapero720.watervision.VisionOverlay;
-import me.srrapero720.watervision.client.screens.VisionScreen;
 import net.minecraft.client.server.IntegratedServer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
