@@ -8,9 +8,12 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.network.NetworkEvent;
 
-public abstract class Packet<T extends Packet<T>> {
+import java.util.function.Supplier;
 
-    public void exec(NetworkEvent.Context context) {
+public interface Packet {
+
+    default void exec(final Supplier<NetworkEvent.Context> supplier) {
+        final var context = supplier.get();
         context.enqueueWork(() -> this.exectute(context.getDirection().getReceptionSide().isClient(), context.getSender()));
         context.setPacketHandled(true);
     }
@@ -33,9 +36,8 @@ public abstract class Packet<T extends Packet<T>> {
     }
 
     @OnlyIn(Dist.CLIENT)
-    protected abstract void execClient(Player player);
-    protected abstract void execServer(ServerPlayer player);
+    void execClient(Player player);
+    void execServer(ServerPlayer player);
 
-    public abstract void write(FriendlyByteBuf buf);
-    public abstract void read(FriendlyByteBuf buf);
+    void encode(FriendlyByteBuf buf);
 }

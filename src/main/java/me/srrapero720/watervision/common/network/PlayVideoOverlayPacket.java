@@ -7,32 +7,24 @@ import net.minecraft.world.entity.player.Player;
 
 import java.net.URI;
 
-public class PlayVideoOverlayPacket extends Packet<PlayVideoOverlayPacket> {
-    public String url;
-
-    public PlayVideoOverlayPacket() {}
-
-    public PlayVideoOverlayPacket(String url) {
-        this.url = url;
-    }
+public record PlayVideoOverlayPacket(String url) implements Packet {
 
     @Override
-    protected void execClient(Player player) {
+    public void execClient(Player player) {
         WaterVisionClient.openOverlay(URI.create(this.url));
     }
 
     @Override
-    protected void execServer(ServerPlayer player) {
-        throw new UnsupportedOperationException("Packet its S2C only");
+    public void execServer(ServerPlayer player) {
+        throw new UnsupportedOperationException("");
     }
 
     @Override
-    public void write(FriendlyByteBuf buf) {
+    public void encode(FriendlyByteBuf buf) {
         buf.writeUtf(this.url);
     }
 
-    @Override
-    public void read(FriendlyByteBuf buf) {
-        this.url = buf.readUtf();
+    public static PlayVideoOverlayPacket decode(FriendlyByteBuf buf) {
+        return new PlayVideoOverlayPacket(buf.readUtf());
     }
 }

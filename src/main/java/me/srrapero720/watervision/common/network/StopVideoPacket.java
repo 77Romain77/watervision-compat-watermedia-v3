@@ -5,24 +5,22 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 
-public class StopVideoPacket extends Packet<StopVideoPacket> {
+public record StopVideoPacket() implements Packet {
     @Override
-    protected void execClient(Player player) {
+    public void execClient(Player player) {
         WaterVisionClient.closeScreen();
     }
 
     @Override
-    protected void execServer(ServerPlayer player) {
+    public void execServer(ServerPlayer player) {
 
     }
 
     @Override
-    public void write(FriendlyByteBuf buf) {
-
+    public void encode(FriendlyByteBuf buf) {
     }
 
-    @Override
-    public void read(FriendlyByteBuf buf) {
-
+    public static StopVideoPacket decode(FriendlyByteBuf buf) {
+        return new StopVideoPacket();
     }
 }

@@ -2,6 +2,7 @@ package me.srrapero720.watervision.common.network;
 
 import me.srrapero720.watervision.WaterVision;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
@@ -12,6 +13,7 @@ import net.minecraftforge.network.NetworkRegistry;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class VisionNetwork {
@@ -30,49 +32,37 @@ public class VisionNetwork {
                 .simpleChannel();
 
         // Register Packets
-        register(PlayVideoPacket.class, PlayVideoPacket::new);
-        register(PlayVideoOverlayPacket.class, PlayVideoOverlayPacket::new);
-        register(StopVideoPacket.class, StopVideoPacket::new);
-        register(StopVideoOverlayPacket.class, StopVideoOverlayPacket::new);
+        register(PlayVideoPacket.class, PlayVideoPacket::decode);
+        register(PlayVideoOverlayPacket.class, PlayVideoOverlayPacket::decode);
+        register(StopVideoPacket.class, StopVideoPacket::decode);
+        register(StopVideoOverlayPacket.class, StopVideoOverlayPacket::decode);
     }
 
-    private static <T extends Packet<T>> void register(Class<T> clazz, Supplier<T> factory) {
-        INSTANCE.registerMessage(
-                nextId++, clazz,
-                // encode
-                Packet::write,
-                // decode
-                buf -> {
-                    final T msg = factory.get();
-                    msg.read(buf);
-                    return msg;
-                },
-                // handle
-                (msg, ctx) -> msg.exec(ctx.get())
-        );
+    private static <T extends Packet> void register(final Class<T> type, final Function<FriendlyByteBuf, T> factory) {
+        INSTANCE.registerMessage(nextId++, type, Packet::encode, factory, Packet::exec);
     }
 
-    public static <MSG> void sendTo(MSG msg, ServerPlayer player) {
+    public static <MSG> void sendTo(final MSG msg, final ServerPlayer player) {
         INSTANCE.sendTo(msg, player.connection.connection, NetworkDirection.PLAY_TO_CLIENT);
     }
 
-    public static <MSG> void sendToClient(MSG message, Level level, BlockPos pos) {
+    public static <MSG> void sendToClient(final MSG message, final Level level, final BlockPos pos) {
         sendToClient(message, level.getChunkAt(pos));
     }
 
-    public static <MSG> void sendToClient(MSG msg, LevelChunk chunk) {
+    public static <MSG> void sendToClient(final MSG msg, final LevelChunk chunk) {
         INSTANCE.send(PacketDistributor.TRACKING_CHUNK.with(() -> chunk), msg);
     }
 
-    public static <MSG> void sendToAllTracking(MSG msg, LivingEntity entityToTrack) {
+    public static <MSG> void sendToAllTracking(final MSG msg, final LivingEntity entityToTrack) {
         INSTANCE.send(PacketDistributor.TRACKING_ENTITY.with(() -> entityToTrack), msg);
     }
 
-    public static <MSG> void sendToAll(MSG msg) {
+    public static <MSG> void sendToAll(final MSG msg) {
         INSTANCE.send(PacketDistributor.ALL.noArg(), msg);
     }
 
-    public static <MSG> void sendToServer(MSG msg) {
+    public static <MSG> void sendToServer(final MSG msg) {
         INSTANCE.sendToServer(msg);
     }
 }
