@@ -16,7 +16,7 @@ java {
 
 base {
     archivesName = modid
-    version = "$modloader-mc$minecraftversion-v$modversion"
+    version = "$modloadershort-mc$minecraftversion-v$modversion"
 }
 
 java.toolchain {
@@ -144,7 +144,6 @@ publishMods {
     type = ALPHA
     displayName = "$modname/$project.properties.version"
     modLoaders.add(modloader.toLowerCase())
-    additionalFiles.from(sourcesJar.archiveFile)
     maxRetries = 2
 
     dryRun = false
