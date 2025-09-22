@@ -141,7 +141,7 @@ jar {
 publishMods {
     file = jar.archiveFile
     changelog = getChangelogText()
-    type = STABLE
+    type = ALPHA
     displayName = "$modname/$project.properties.version"
     modLoaders.add(modloader.toLowerCase())
     additionalFiles.from(sourcesJar.archiveFile)
