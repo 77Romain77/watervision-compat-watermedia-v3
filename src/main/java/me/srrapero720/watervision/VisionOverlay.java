@@ -52,6 +52,7 @@ public class VisionOverlay {
             player.release();
             player = null;
             activeUri = null;
+            return;
         }
 
         if (activeUri != uri) {
