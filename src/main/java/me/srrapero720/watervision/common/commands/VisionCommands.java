@@ -8,7 +8,9 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import me.srrapero720.watervision.WaterVision;
+import me.srrapero720.watervision.WaterVisionClient;
 import me.srrapero720.watervision.client.screens.VisionScreen;
+import me.srrapero720.watervision.common.network.PlayVideoOverlayPacket;
 import me.srrapero720.watervision.common.network.PlayVideoPacket;
 import me.srrapero720.watervision.common.network.VisionNetwork;
 import net.minecraft.client.Minecraft;
@@ -54,6 +56,15 @@ public class VisionCommands {
                         )
                 )
         );
+
+        dispatcher.register(Commands.literal("playoverlay")
+                .requires(source -> !source.isPlayer() || source.hasPermission(4))
+                .then(Commands.argument("url", StringArgumentType.string())
+                        .then(Commands.argument("target", EntityArgument.players())
+                                .executes(VisionCommands::openVideoOverlay)
+                        )
+                )
+        );
     }
 
     @OnlyIn(Dist.CLIENT)
@@ -82,11 +93,11 @@ public class VisionCommands {
             final var speed = getFloatOrDefault(context, "speed", 1.0f);
             final var stretchVideo = getBoolOrDefault(context, "stretch_video", false);
 
-            Minecraft.getInstance().setScreen(new VisionScreen(URI.create(url), volume, speed, stretchVideo, 20.0f, 20.0f, true, true));
+            WaterVisionClient.openScreen(URI.create(url), volume, speed, stretchVideo, WaterVisionClient.DEF_GAME_FADE_DURATION, WaterVisionClient.DEF_VIDEO_FADE_DURATION, true, true);
             return 0;
-        } catch (Exception e) {
+        } catch (final Exception e) {
             context.getSource().sendFailure(Component.literal("Failed to open video screen, see log for more details"));
-            WaterVision.LOGGER.error("Failed to execute /videoclient command", e);
+            WaterVision.LOGGER.error("Failed to execute /playvideoclient command", e);
         }
 
         return 1;
@@ -111,13 +122,34 @@ public class VisionCommands {
             return 0;
         } catch (Exception e) {
             context.getSource().sendFailure(Component.literal("Failed to open video screen, see console for more details"));
-            WaterVision.LOGGER.error("Failed to execute /video command", e);
+            WaterVision.LOGGER.error("Failed to execute /playvideo command", e);
 
             if (e instanceof CommandSyntaxException) {
                 throw e;
             }
         }
 
+        return 1;
+    }
+
+    private static int openVideoOverlay(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        try {
+            final var url = StringArgumentType.getString(context, "url");
+            final var players = EntityArgument.getPlayers(context, "target");
+
+            for (final var player: players) {
+                VisionNetwork.sendTo(new PlayVideoOverlayPacket(url), player);
+            }
+
+            return 0;
+        } catch (Exception e) {
+            context.getSource().sendFailure(Component.literal("Failed to open video screen, see console for more details"));
+            WaterVision.LOGGER.error("Failed to execute /playoverlay command", e);
+
+            if (e instanceof CommandSyntaxException) {
+                throw e;
+            }
+        }
         return 1;
     }
 

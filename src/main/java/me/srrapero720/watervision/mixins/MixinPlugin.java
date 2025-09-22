@@ -1,7 +1,5 @@
 package me.srrapero720.watervision.mixins;
 
-import org.apache.logging.log4j.Marker;
-import org.apache.logging.log4j.MarkerManager;
 import org.objectweb.asm.tree.ClassNode;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
@@ -9,16 +7,9 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 import java.util.List;
 import java.util.Set;
 
-import static me.srrapero720.watervision.WaterVision.LOGGER;
-
 public class MixinPlugin implements IMixinConfigPlugin {
-    private static final Marker IT = MarkerManager.getMarker(MixinPlugin.class.getSimpleName());
-
     @Override
-    public void onLoad(String mixinPackage) {
-        // IS CALLED WHEN A MIXIN IS LOADED
-        LOGGER.info(IT,"Loading mixin: {}", mixinPackage);
-    }
+    public void onLoad(String mixinPackage) {}
 
     @Override
     public String getRefMapperConfig() {
@@ -29,8 +20,7 @@ public class MixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        // Check if any mixin should be applied, false for prevent application
-        return false;
+        return true;
     }
 
     @Override
@@ -39,19 +29,11 @@ public class MixinPlugin implements IMixinConfigPlugin {
     }
 
     @Override
-    public List<String> getMixins() {
-        // YOU SHOULD IGNORE THIS
-        return null;
-    }
+    public List<String> getMixins() { return null; }
 
     @Override
-    public void preApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
-        // ALWAYS KEEP THIS, IS HELPFULLY FOR OTHER DEVELOPERS IN CASE YOUR MOD MODIFIES A LOT MINECRAFT BEHAVIOR
-        LOGGER.debug(IT, "Applying mixin '{}' to target class {}", mixinClassName, targetClassName);
-    }
+    public void preApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {}
 
     @Override
-    public void postApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
-        LOGGER.debug(IT, "Mixin '{}' applied successfully", mixinClassName);
-    }
+    public void postApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {}
 }

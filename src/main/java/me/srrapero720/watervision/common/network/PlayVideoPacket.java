@@ -1,5 +1,6 @@
 package me.srrapero720.watervision.common.network;
 
+import me.srrapero720.watervision.WaterVisionClient;
 import me.srrapero720.watervision.client.screens.VisionScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.FriendlyByteBuf;
@@ -36,7 +37,7 @@ public class PlayVideoPacket extends Packet<PlayVideoPacket> {
     @Override
     @OnlyIn(Dist.CLIENT)
     protected void execClient(final Player player) {
-        Minecraft.getInstance().setScreen(new VisionScreen(URI.create(this.url), this.volume, this.speed, this.stretch, this.gameFadeDuration, this.videoFadeDuration, this.controls, this.exit));
+        WaterVisionClient.openScreen(URI.create(this.url), this.volume, this.speed, this.stretch, this.gameFadeDuration, this.videoFadeDuration, this.controls, this.exit);
     }
 
     @Override

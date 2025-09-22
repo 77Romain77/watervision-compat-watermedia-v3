@@ -1,23 +1,16 @@
 package me.srrapero720.watervision.client.screens;
 
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.*;
 import me.srrapero720.watervision.WaterVision;
+import me.srrapero720.watervision.WaterVisionClient;
 import me.srrapero720.watervision.client.render.TextureWrapper;
 import me.srrapero720.watervision.client.screens.widgets.FadeBackground;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraftforge.fml.loading.FMLLoader;
-import org.joml.Matrix4f;
-import org.lwjgl.opengl.GL11;
-import org.watermedia.api.image.ImageAPI;
-import org.watermedia.api.image.ImageRenderer;
 import org.watermedia.api.player.PlayerAPI;
 import org.watermedia.api.player.videolan.VideoPlayer;
 
@@ -74,14 +67,12 @@ public class VisionScreen extends Screen {
         if (this.status == Status.OPENING_VIDEO || this.status == Status.CLOSING_VIDEO) {
             this.videoPlayer.preRender();
             if (this.stretch) {
-                this.render$blit(guiGraphics, TEXTURE, 1, 0, 0, 0, 0, this.width, this.height);
+                WaterVisionClient.internal$blit(guiGraphics, TEXTURE, 1, 0, 0, 0, 0, this.width, this.height);
             } else {
                 final AspectRatioDimension dim = this.render$getAspectRatio(this.width, this.height, this.videoPlayer.width(), this.videoPlayer.height());
-                this.render$blit(guiGraphics, TEXTURE, 1, dim.x, dim.y, 0, 0, dim.width, dim.height);
+                WaterVisionClient.internal$blit(guiGraphics, TEXTURE, 1, dim.x, dim.y, 0, 0, dim.width, dim.height);
             }
         }
-
-
 
         if (this.status != Status.OPENING_GAME && this.status != Status.CLOSING_GAME) {
             this.videoBackground.render(guiGraphics, this.width, this.height, this.status == Status.CLOSING_VIDEO, partialTick);
@@ -103,7 +94,7 @@ public class VisionScreen extends Screen {
     }
 
     private void render$loadingIcon(GuiGraphics graphics, float partialTick) {
-        this.render$blit(graphics, WaterVision.LOADING_ANIM_TEXTURE, 1, this.width - 40, this.height - 40, 0, 0, 40, 40);
+        WaterVisionClient.internal$blit(graphics, WaterVision.LOADING_ANIM_TEXTURE, 1, this.width - 40, this.height - 40, 0, 0, 40, 40);
     }
 
     private AspectRatioDimension render$getAspectRatio(final int screenWidth, final int screenHeight, final int videoWidth, final int videoHeight) {
@@ -124,35 +115,6 @@ public class VisionScreen extends Screen {
         final int offsetY = (screenHeight - renderHeight) / 2;
 
         return new AspectRatioDimension(offsetX, offsetY, renderWidth, renderHeight);
-    }
-
-    private void render$blit(final GuiGraphics graphics, final ResourceLocation texture, final float alpha, final int x, final int y, final int offsetX, final int offsetY, final int width, final int height) {
-        final float pX1 = x;
-        final float pX2 = x + width;
-        final float pY1 = y;
-        final float pY2 = y + height;
-        final float pBlitOffset = 0.0f;
-        final var pMinU = offsetX / width;
-        final var pMaxU = (offsetX + width) / width;
-        final var pMinV = offsetY / height;
-        final var pMaxV = (offsetY + height) / height;
-
-        RenderSystem.enableBlend();
-        final int tex = Minecraft.getInstance().textureManager.getTexture(texture).getId();
-        RenderSystem.bindTexture(tex);
-        RenderSystem.setShaderTexture(0, tex);
-        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, alpha);
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        final Matrix4f matrix4f = graphics.pose().last().pose();
-        final BufferBuilder bufferbuilder = Tesselator.getInstance().getBuilder();
-        bufferbuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-        bufferbuilder.vertex(matrix4f, pX1, pY1, pBlitOffset).uv(pMinU, pMinV).endVertex();
-        bufferbuilder.vertex(matrix4f, pX1, pY2, pBlitOffset).uv(pMinU, pMaxV).endVertex();
-        bufferbuilder.vertex(matrix4f, pX2, pY2, pBlitOffset).uv(pMaxU, pMaxV).endVertex();
-        bufferbuilder.vertex(matrix4f, pX2, pY1, pBlitOffset).uv(pMaxU, pMinV).endVertex();
-        RenderSystem.texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
-        BufferUploader.drawWithShader(bufferbuilder.end());
-        RenderSystem.disableBlend();
     }
 
     @Override
