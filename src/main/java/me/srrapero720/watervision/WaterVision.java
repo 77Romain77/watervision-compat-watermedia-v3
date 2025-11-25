@@ -1,6 +1,5 @@
 package me.srrapero720.watervision;
 
-import me.srrapero720.watervision.client.render.TextureWrapper;
 import me.srrapero720.watervision.common.commands.VisionCommands;
 import me.srrapero720.watervision.common.network.VisionNetwork;
 import net.minecraft.client.Minecraft;
@@ -61,9 +60,6 @@ public class WaterVision {
         @OnlyIn(Dist.CLIENT)
         public static void clientSetup(final FMLClientSetupEvent event) {
             LOGGER.debug("Client setup...");
-            event.enqueueWork(() -> {
-                Minecraft.getInstance().getTextureManager().register(LOADING_ANIM_TEXTURE, new TextureWrapper(0));
-            });
         }
     }
 

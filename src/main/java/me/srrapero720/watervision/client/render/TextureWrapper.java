@@ -9,9 +9,7 @@ public class TextureWrapper extends AbstractTexture {
         this.id = id;
     }
 
-    @Override public int getId() {
-        return this.id;
-    }
+    @Override public int getId() { return this.id; }
 
     @Override public void load(@NotNull ResourceManager manager) { /* NO OP */ }
     @Override public void releaseId() { /* NO OP */ }

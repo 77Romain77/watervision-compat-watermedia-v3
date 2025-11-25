@@ -8,6 +8,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import me.srrapero720.watervision.WaterVision;
+import me.srrapero720.watervision.client.screens.QuickVisionScreen;
 import me.srrapero720.watervision.client.screens.VisionScreen;
 import me.srrapero720.watervision.common.network.PlayVideoPacket;
 import me.srrapero720.watervision.common.network.VisionNetwork;
@@ -18,7 +19,9 @@ import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.minecraftforge.server.command.EnumArgument;
 
+import java.io.File;
 import java.net.URI;
 
 public class VisionCommands {
@@ -72,17 +75,54 @@ public class VisionCommands {
                         )
                 )
         );
+
+        dispatcher.register(Commands.literal("playquickvideo")
+                .then(Commands.argument("url", StringArgumentType.string())
+                        .executes(VisionCommands::openQuickVideoScreenClient)
+                        .then(Commands.argument("volume", IntegerArgumentType.integer(0, 100))
+                                .executes(VisionCommands::openQuickVideoScreenClient)
+                                .then(Commands.argument("speed", FloatArgumentType.floatArg(0.25f, 2.0f))
+                                        .executes(VisionCommands::openQuickVideoScreenClient)
+                                        .then(Commands.argument("stretch_video", BoolArgumentType.bool())
+                                                .executes(VisionCommands::openQuickVideoScreenClient)
+                                                .then(Commands.argument("engine", EnumArgument.enumArgument(EngineType.class))
+                                                        .executes(VisionCommands::openQuickVideoScreenClient))
+                                        )
+                                )
+                        )
+                )
+        );
     }
 
     @OnlyIn(Dist.CLIENT)
     private static int openVideoScreenClient(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         try {
-            final var url = StringArgumentType.getString(context, "url");
+            var url = StringArgumentType.getString(context, "url");
             final var volume = getIntOrDefault(context, "volume", 100);
             final var speed = getFloatOrDefault(context, "speed", 1.0f);
             final var stretchVideo = getBoolOrDefault(context, "stretch_video", false);
 
-            Minecraft.getInstance().setScreen(new VisionScreen(URI.create(url), volume, speed, stretchVideo, 20.0f, 20.0f, true, true));
+            Minecraft.getInstance().setScreen(new VisionScreen(url.contains("://") ? URI.create(url) : new File(url).toURI(), volume, speed, stretchVideo, 20.0f, 20.0f, true, true));
+            return 0;
+        } catch (Exception e) {
+            context.getSource().sendFailure(Component.literal("Failed to open video screen, see log for more details"));
+            WaterVision.LOGGER.error("Failed to execute /videoclient command", e);
+        }
+
+        return 1;
+    }
+
+
+    @OnlyIn(Dist.CLIENT)
+    private static int openQuickVideoScreenClient(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        try {
+            var url = StringArgumentType.getString(context, "url");
+            final var volume = getIntOrDefault(context, "volume", 100);
+            final var speed = getFloatOrDefault(context, "speed", 1.0f);
+            final var stretchVideo = getBoolOrDefault(context, "stretch_video", false);
+            final var engine = getEnumOrDefault(context, "engine", EngineType.class, EngineType.FFMPEG);
+
+            Minecraft.getInstance().setScreen(new QuickVisionScreen(url.contains("://") ? URI.create(url) : new File(url).toURI(), volume, speed, stretchVideo, true, true, engine));
             return 0;
         } catch (Exception e) {
             context.getSource().sendFailure(Component.literal("Failed to open video screen, see log for more details"));
@@ -119,6 +159,14 @@ public class VisionCommands {
         }
 
         return 1;
+    }
+
+    private static <T extends Enum<T>> T getEnumOrDefault(CommandContext<CommandSourceStack> context, String name, Class<T> enumClass, T def) {
+        try {
+            return context.getArgument(name, enumClass);
+        } catch (IllegalArgumentException ex) {
+            return def;
+        }
     }
 
     private static String getStringOrDefault(CommandContext<CommandSourceStack> context, String name, String def) {
