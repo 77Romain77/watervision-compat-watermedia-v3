@@ -1,7 +1,6 @@
 package me.srrapero720.watervision.client.screens.widgets;
 
 import net.minecraft.client.gui.GuiGraphics;
-import org.watermedia.api.math.MathAPI;
 
 public class FadeBackground {
     private float fadeTick = 0.0f;
@@ -24,11 +23,15 @@ public class FadeBackground {
             if (this.fadeTick < 0) this.fadeTick = 0;
         }
 
-        // Calculate alpha based on fadeTick
-        final int alpha = (int) (MathAPI.easeIn(0, 255, MathAPI.scaleTempo(0, this.fadeTickDuration, this.fadeTick)));
+        final float progress = this.fadeTick / this.fadeTickDuration;
+        final float easedProgress = progress * progress;
+        final int alpha = (int) (255.0f * easedProgress);
 
-        // Draw the background with the calculated alpha
-        graphics.fill(0, 0, width, height, MathAPI.argb(alpha, 0, 0, 0)); // Black background with variable alpha
+        graphics.fill(0, 0, width, height, argb(alpha, 0, 0, 0));
+    }
+
+    private static int argb(final int alpha, final int red, final int green, final int blue) {
+        return ((alpha & 255) << 24) | ((red & 255) << 16) | ((green & 255) << 8) | (blue & 255);
     }
 
     public boolean isFadedOut() {
