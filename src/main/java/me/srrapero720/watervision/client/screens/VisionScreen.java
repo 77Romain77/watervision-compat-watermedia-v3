@@ -168,7 +168,7 @@ public class VisionScreen extends Screen {
 
         switch (this.status) {
             case OPENING_GAME -> {
-                if (this.gameBackground.isFadedIn() && this.videoPlayer != null && this.videoPlayer.canPlay()) {
+                if (this.gameBackground.isFadedIn() && this.videoPlayer != null) {
                     this.status = Status.OPENING_VIDEO;
                     this.videoPlayer.resume();
                 }
