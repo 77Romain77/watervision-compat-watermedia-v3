@@ -25,12 +25,12 @@ import java.util.Date;
 import java.util.TimeZone;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "auto-reopen-backoff-no-poll";
+    private static final String BUILD_TAG = "hard-reopen-null-no-poll";
     private static final DateFormat FORMAT = new SimpleDateFormat("HH:mm:ss");
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int FIRST_FRAME_WAIT_LIMIT = 60;
     private static final int MAX_REOPENS = 3;
-    private static final int[] REOPEN_DELAYS = {120, 200, 300};
+    private static final int[] REOPEN_DELAYS = {80, 140, 220};
 
     static {
         FORMAT.setTimeZone(TimeZone.getTimeZone("GMT-00:00"));
@@ -55,7 +55,6 @@ public class VisionScreen extends Screen {
     private boolean reopenScheduled;
     private boolean exhaustedLogged;
     private int waitingTicks;
-    private int reopenDelayTicks;
 
     private Status status = Status.OPENING_GAME;
     private final FadeBackground gameBackground;
@@ -199,18 +198,7 @@ public class VisionScreen extends Screen {
 
     @Override
     public void tick() {
-        if (this.reopenScheduled) {
-            if (this.reopenDelayTicks > 0) {
-                this.reopenDelayTicks--;
-                if (this.reopenDelayTicks == 0) {
-                    WaterVision.LOGGER.warn("WaterVision backoff delay finished [{}] reopen={}/{} for {}", BUILD_TAG, this.reopenCount + 1, MAX_REOPENS, this.uri);
-                }
-                return;
-            }
-            WaterVision.LOGGER.warn("WaterVision reopening screen [{}] reopen={}/{} for {}", BUILD_TAG, this.reopenCount + 1, MAX_REOPENS, this.uri);
-            Minecraft.getInstance().setScreen(new VisionScreen(this.uri, this.volume, this.speed, this.stretch, this.gameFadeDuration, this.videoFadeDuration, this.controls, this.exit, this.reopenCount + 1));
-            return;
-        }
+        if (this.reopenScheduled) return;
 
         this.tryCreatePlayer();
 
@@ -226,12 +214,12 @@ public class VisionScreen extends Screen {
                 WaterVision.LOGGER.warn("WaterVision waiting for first video frame [{}]: status={}, texture={}, size={}x{}, reopen={}/{}, uri={}", BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.reopenCount, MAX_REOPENS, this.uri);
             }
             if (this.waitingTicks >= FIRST_FRAME_WAIT_LIMIT && this.reopenCount < MAX_REOPENS) {
-                this.scheduleReopen();
+                this.scheduleHardReopen();
                 return;
             }
             if (this.waitingTicks >= FIRST_FRAME_WAIT_LIMIT && this.reopenCount >= MAX_REOPENS && !this.exhaustedLogged) {
                 this.exhaustedLogged = true;
-                WaterVision.LOGGER.error("WaterVision exhausted screen reopen attempts [{}]: status={}, texture={}, size={}x{}, uri={}", BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
+                WaterVision.LOGGER.error("WaterVision exhausted hard reopen attempts [{}]: status={}, texture={}, size={}x{}, uri={}", BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
             }
         }
 
@@ -260,15 +248,38 @@ public class VisionScreen extends Screen {
         }
     }
 
-    private void scheduleReopen() {
+    private void scheduleHardReopen() {
+        final int nextReopen = this.reopenCount + 1;
         final int delay = REOPEN_DELAYS[Math.min(this.reopenCount, REOPEN_DELAYS.length - 1)];
-        WaterVision.LOGGER.warn("WaterVision first frame timeout, scheduling screen reopen [{}] ({}/{}): delay={} ticks, status={}, texture={}, size={}x{}, uri={}", BUILD_TAG, this.reopenCount + 1, MAX_REOPENS, delay, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
-        this.releasePlayerOnly();
+        WaterVision.LOGGER.warn("WaterVision first frame timeout, hard-closing screen before reopen [{}] ({}/{}): delay={} ticks, status={}, texture={}, size={}x{}, uri={}", BUILD_TAG, nextReopen, MAX_REOPENS, delay, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
+
+        this.reopenScheduled = true;
         this.failedToCreatePlayer = true;
         this.resumeRequested = false;
         this.waitingTicks = 0;
-        this.reopenScheduled = true;
-        this.reopenDelayTicks = delay;
+
+        final Minecraft minecraft = Minecraft.getInstance();
+        this.closeAndRelease();
+        minecraft.setScreen(null);
+
+        final Thread reopenThread = new Thread(() -> {
+            try {
+                Thread.sleep(delay * 50L);
+            } catch (final InterruptedException ignored) {
+                return;
+            }
+
+            minecraft.execute(() -> {
+                if (minecraft.screen == null) {
+                    WaterVision.LOGGER.warn("WaterVision reopening screen after hard close [{}] reopen={}/{} for {}", BUILD_TAG, nextReopen, MAX_REOPENS, this.uri);
+                    minecraft.setScreen(new VisionScreen(this.uri, this.volume, this.speed, this.stretch, this.gameFadeDuration, this.videoFadeDuration, this.controls, this.exit, nextReopen));
+                } else {
+                    WaterVision.LOGGER.warn("WaterVision hard reopen cancelled [{}] because another screen is open: {}", BUILD_TAG, minecraft.screen.getClass().getName());
+                }
+            });
+        }, "WaterVision-Hard-Reopen");
+        reopenThread.setDaemon(true);
+        reopenThread.start();
     }
 
     private void releasePlayerOnly() {
