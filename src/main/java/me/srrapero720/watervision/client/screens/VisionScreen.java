@@ -25,12 +25,12 @@ import java.util.Date;
 import java.util.TimeZone;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "no-manual-poll-fast-retry";
+    private static final String BUILD_TAG = "auto-reopen-no-poll";
     private static final DateFormat FORMAT = new SimpleDateFormat("HH:mm:ss");
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int FIRST_FRAME_WAIT_LIMIT = 40;
-    private static final int MAX_PLAYER_REFRESHES = 5;
-    private static final int PLAYER_REFRESH_DELAY = 5;
+    private static final int MAX_REOPENS = 2;
+    private static final int REOPEN_DELAY = 20;
 
     static {
         FORMAT.setTimeZone(TimeZone.getTimeZone("GMT-00:00"));
@@ -40,31 +40,41 @@ public class VisionScreen extends Screen {
     private final int volume;
     private final float speed;
     private final boolean stretch;
+    private final float gameFadeDuration;
+    private final float videoFadeDuration;
     private final boolean controls;
     private final boolean exit;
+    private final int reopenCount;
 
-    private MRL mrl;
+    private final MRL mrl;
     private MediaPlayer videoPlayer;
     private TextureWrapper textureWrapper;
     private boolean failedToCreatePlayer;
     private boolean released;
     private boolean resumeRequested;
+    private boolean reopenScheduled;
     private int waitingTicks;
-    private int playerRefreshes;
-    private int refreshDelayTicks;
+    private int reopenDelayTicks;
 
     private Status status = Status.OPENING_GAME;
     private final FadeBackground gameBackground;
     private final FadeBackground videoBackground;
 
     public VisionScreen(final URI uri, final int volume, final float speed, final boolean stretch, final float gameFadeDuration, final float videoFadeDuration, final boolean controls, final boolean exit) {
+        this(uri, volume, speed, stretch, gameFadeDuration, videoFadeDuration, controls, exit, 0);
+    }
+
+    private VisionScreen(final URI uri, final int volume, final float speed, final boolean stretch, final float gameFadeDuration, final float videoFadeDuration, final boolean controls, final boolean exit, final int reopenCount) {
         super(Component.literal("WaterVision"));
         this.uri = uri;
         this.volume = Mth.clamp(volume, 0, 100);
         this.speed = Mth.clamp(speed, 0.1f, 3f);
         this.stretch = stretch;
+        this.gameFadeDuration = gameFadeDuration;
+        this.videoFadeDuration = videoFadeDuration;
         this.controls = controls;
         this.exit = exit;
+        this.reopenCount = reopenCount;
 
         this.gameBackground = new FadeBackground(gameFadeDuration);
         this.videoBackground = new FadeBackground(videoFadeDuration);
@@ -72,13 +82,11 @@ public class VisionScreen extends Screen {
 
         this.mrl = MediaAPI.getMRL(uri.toString());
         Minecraft.getInstance().getSoundManager().pause();
-        WaterVision.LOGGER.info("WaterVision screen opened [{}] for {}", BUILD_TAG, this.uri);
+        WaterVision.LOGGER.info("WaterVision screen opened [{}] reopen={}/{} for {}", BUILD_TAG, this.reopenCount, MAX_REOPENS, this.uri);
     }
 
     private void tryCreatePlayer() {
-        if (this.videoPlayer != null || this.failedToCreatePlayer || this.mrl == null || !this.mrl.ready()) {
-            return;
-        }
+        if (this.videoPlayer != null || this.failedToCreatePlayer || !this.mrl.ready()) return;
 
         if (this.mrl.error()) {
             this.failedToCreatePlayer = true;
@@ -102,7 +110,7 @@ public class VisionScreen extends Screen {
         this.textureWrapper = new TextureWrapper(() -> (int) this.videoPlayer.texture());
         Minecraft.getInstance().getTextureManager().register(TEXTURE, this.textureWrapper);
         this.videoPlayer.startPaused();
-        WaterVision.LOGGER.info("WaterVision player created [{}] for {}", BUILD_TAG, this.uri);
+        WaterVision.LOGGER.info("WaterVision player created [{}] reopen={}/{} for {}", BUILD_TAG, this.reopenCount, MAX_REOPENS, this.uri);
     }
 
     private GLEngine createGfxEngine() {
@@ -172,7 +180,6 @@ public class VisionScreen extends Screen {
     private AspectRatioDimension render$getAspectRatio(final int screenWidth, final int screenHeight, final int videoWidth, final int videoHeight) {
         final float containerAspectRatio = (float) screenWidth / (float) screenHeight;
         final float videoAspectRatio = (float) videoWidth / (float) videoHeight;
-
         final int renderWidth, renderHeight;
 
         if (videoAspectRatio > containerAspectRatio) {
@@ -183,10 +190,7 @@ public class VisionScreen extends Screen {
             renderHeight = screenHeight;
         }
 
-        final int offsetX = (screenWidth - renderWidth) / 2;
-        final int offsetY = (screenHeight - renderHeight) / 2;
-
-        return new AspectRatioDimension(offsetX, offsetY, renderWidth, renderHeight);
+        return new AspectRatioDimension((screenWidth - renderWidth) / 2, (screenHeight - renderHeight) / 2, renderWidth, renderHeight);
     }
 
     @Override
@@ -194,12 +198,13 @@ public class VisionScreen extends Screen {
 
     @Override
     public void tick() {
-        if (this.refreshDelayTicks > 0) {
-            this.refreshDelayTicks--;
-            if (this.refreshDelayTicks == 0) {
-                this.mrl = MediaAPI.getMRL(this.uri.toString());
-                WaterVision.LOGGER.warn("WaterVision restarting media load after cleanup delay [{}]: refresh={}/{}, uri={}", BUILD_TAG, this.playerRefreshes, MAX_PLAYER_REFRESHES, this.uri);
+        if (this.reopenScheduled) {
+            if (this.reopenDelayTicks > 0) {
+                this.reopenDelayTicks--;
+                return;
             }
+            WaterVision.LOGGER.warn("WaterVision reopening screen [{}] reopen={}/{} for {}", BUILD_TAG, this.reopenCount + 1, MAX_REOPENS, this.uri);
+            Minecraft.getInstance().setScreen(new VisionScreen(this.uri, this.volume, this.speed, this.stretch, this.gameFadeDuration, this.videoFadeDuration, this.controls, this.exit, this.reopenCount + 1));
             return;
         }
 
@@ -208,16 +213,16 @@ public class VisionScreen extends Screen {
         if (this.videoPlayer != null && !this.resumeRequested) {
             this.videoPlayer.resume();
             this.resumeRequested = true;
-            WaterVision.LOGGER.info("WaterVision player resume requested [{}] for {}", BUILD_TAG, this.uri);
+            WaterVision.LOGGER.info("WaterVision player resume requested [{}] reopen={}/{} for {}", BUILD_TAG, this.reopenCount, MAX_REOPENS, this.uri);
         }
 
         if (this.videoPlayer != null && !this.isVideoReady() && this.status == Status.OPENING_GAME) {
             this.waitingTicks++;
             if (this.waitingTicks == 20 || this.waitingTicks == 40 || this.waitingTicks == 80) {
-                WaterVision.LOGGER.warn("WaterVision waiting for first video frame [{}]: status={}, texture={}, size={}x{}, refresh={}/{}, uri={}", BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.playerRefreshes, MAX_PLAYER_REFRESHES, this.uri);
+                WaterVision.LOGGER.warn("WaterVision waiting for first video frame [{}]: status={}, texture={}, size={}x{}, reopen={}/{}, uri={}", BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.reopenCount, MAX_REOPENS, this.uri);
             }
-            if (this.waitingTicks >= FIRST_FRAME_WAIT_LIMIT && this.playerRefreshes < MAX_PLAYER_REFRESHES) {
-                this.refreshMediaStartup();
+            if (this.waitingTicks >= FIRST_FRAME_WAIT_LIMIT && this.reopenCount < MAX_REOPENS) {
+                this.scheduleReopen();
                 return;
             }
         }
@@ -227,7 +232,7 @@ public class VisionScreen extends Screen {
                 if (this.gameBackground.isFadedIn() && this.isVideoReady()) {
                     this.status = Status.OPENING_VIDEO;
                     this.waitingTicks = 0;
-                    WaterVision.LOGGER.info("WaterVision first frame ready [{}] for {}", BUILD_TAG, this.uri);
+                    WaterVision.LOGGER.info("WaterVision first frame ready [{}] reopen={}/{} for {}", BUILD_TAG, this.reopenCount, MAX_REOPENS, this.uri);
                 }
             }
             case OPENING_VIDEO -> {
@@ -236,9 +241,7 @@ public class VisionScreen extends Screen {
                 }
             }
             case CLOSING_VIDEO -> {
-                if (this.videoBackground.isFadedIn()) {
-                    this.status = Status.CLOSING_GAME;
-                }
+                if (this.videoBackground.isFadedIn()) this.status = Status.CLOSING_GAME;
             }
             case CLOSING_GAME -> {
                 if (this.gameBackground.isFadedOut()) {
@@ -249,16 +252,13 @@ public class VisionScreen extends Screen {
         }
     }
 
-    private void refreshMediaStartup() {
-        this.playerRefreshes++;
-        WaterVision.LOGGER.warn("WaterVision first frame timeout, scheduling media restart [{}] ({}/{}): status={}, texture={}, size={}x{}, uri={}", BUILD_TAG, this.playerRefreshes, MAX_PLAYER_REFRESHES, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
+    private void scheduleReopen() {
+        WaterVision.LOGGER.warn("WaterVision first frame timeout, scheduling screen reopen [{}] ({}/{}): status={}, texture={}, size={}x{}, uri={}", BUILD_TAG, this.reopenCount + 1, MAX_REOPENS, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
         this.releasePlayerOnly();
-        this.mrl = null;
-        this.failedToCreatePlayer = false;
         this.resumeRequested = false;
         this.waitingTicks = 0;
-        this.status = Status.OPENING_GAME;
-        this.refreshDelayTicks = PLAYER_REFRESH_DELAY;
+        this.reopenScheduled = true;
+        this.reopenDelayTicks = REOPEN_DELAY;
     }
 
     private void releasePlayerOnly() {
@@ -277,26 +277,18 @@ public class VisionScreen extends Screen {
     @Override
     public void onClose() {
         if (this.status != Status.CLOSING_GAME) {
-            if (this.videoPlayer != null && !this.videoPlayer.stopped() && !this.videoPlayer.ended() && !this.videoPlayer.error()) {
-                this.videoPlayer.stop();
-            }
+            if (this.videoPlayer != null && !this.videoPlayer.stopped() && !this.videoPlayer.ended() && !this.videoPlayer.error()) this.videoPlayer.stop();
             this.status = Status.CLOSING_VIDEO;
             return;
         }
-
         this.closeAndRelease();
         super.onClose();
     }
 
     private void closeAndRelease() {
-        if (this.released) {
-            return;
-        }
-
+        if (this.released) return;
         Minecraft.getInstance().getSoundManager().resume();
-
         this.releasePlayerOnly();
-
         this.released = true;
     }
 
