@@ -14,7 +14,6 @@ import org.watermedia.api.media.MRL;
 import org.watermedia.api.media.MediaAPI;
 import org.watermedia.api.media.engines.ALEngine;
 import org.watermedia.api.media.engines.GLEngine;
-import org.watermedia.api.media.players.FFMediaPlayer;
 import org.watermedia.api.media.players.MediaPlayer;
 
 import java.net.URI;
@@ -72,8 +71,6 @@ public class VisionOverlay {
             return;
         }
 
-        pollVideoFrame();
-
         if (player.texture() != 0 && player.width() > 0 && player.height() > 0 && (player.playing() || player.buffering() || player.paused())) {
             final GuiGraphics graphics = e.getGuiGraphics();
 
@@ -130,12 +127,6 @@ public class VisionOverlay {
 
     private static ALEngine createSfxEngine() {
         return ALEngine.buildDefault();
-    }
-
-    private static void pollVideoFrame() {
-        if (player instanceof FFMediaPlayer ffMediaPlayer) {
-            ffMediaPlayer.pollVideoFrame();
-        }
     }
 
     private static void reportFailure(final String message) {
