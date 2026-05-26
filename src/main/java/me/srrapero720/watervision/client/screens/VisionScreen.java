@@ -132,7 +132,7 @@ public class VisionScreen extends Screen {
             this.videoBackground.render(guiGraphics, this.width, this.height, this.status == Status.CLOSING_VIDEO, partialTick);
         }
 
-        if (!videoReady && this.status != Status.CLOSING_GAME) {
+        if (!videoReady && this.gameBackground.isFadedIn() && this.status != Status.CLOSING_GAME) {
             this.renderLoadingIndicator(guiGraphics);
         }
 
@@ -150,18 +150,16 @@ public class VisionScreen extends Screen {
     }
 
     private void renderLoadingIndicator(final GuiGraphics graphics) {
-        final int centerX = this.width / 2;
-        final int centerY = this.height / 2 + 24;
+        final int y = this.height - 28;
+        final int startX = this.width - 56;
         final int phase = (WaterVision.getTicks() / 6) % 4;
 
         for (int i = 0; i < 4; i++) {
             final int alpha = i == phase ? 255 : 90;
             final int color = ((alpha & 255) << 24) | 0xFFFFFF;
-            final int x = centerX - 18 + i * 12;
-            graphics.fill(x, centerY, x + 6, centerY + 6, color);
+            final int x = startX + i * 10;
+            graphics.fill(x, y, x + 5, y + 5, color);
         }
-
-        graphics.drawCenteredString(this.font, "Chargement de la vidéo...", centerX, centerY + 14, 0xFFFFFFFF);
     }
 
     private AspectRatioDimension render$getAspectRatio(final int screenWidth, final int screenHeight, final int videoWidth, final int videoHeight) {
