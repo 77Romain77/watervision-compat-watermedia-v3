@@ -44,6 +44,8 @@ public class VisionScreen extends Screen {
     private TextureWrapper textureWrapper;
     private boolean failedToCreatePlayer;
     private boolean released;
+    private boolean resumeRequested;
+    private int waitingTicks;
 
     private Status status = Status.OPENING_GAME;
     private final FadeBackground gameBackground;
@@ -93,6 +95,7 @@ public class VisionScreen extends Screen {
         this.textureWrapper = new TextureWrapper(() -> (int) this.videoPlayer.texture());
         Minecraft.getInstance().getTextureManager().register(TEXTURE, this.textureWrapper);
         this.videoPlayer.startPaused();
+        WaterVision.LOGGER.info("WaterVision player created for {}", this.uri);
     }
 
     private GLEngine createGfxEngine() {
@@ -115,19 +118,22 @@ public class VisionScreen extends Screen {
 
         this.gameBackground.render(guiGraphics, this.width, this.height, this.status != Status.CLOSING_GAME, partialTick);
 
-        if (this.videoPlayer != null && (this.status == Status.OPENING_VIDEO || this.status == Status.CLOSING_VIDEO)) {
-            if (this.videoPlayer.texture() != 0 && this.videoPlayer.width() > 0 && this.videoPlayer.height() > 0) {
-                if (this.stretch) {
-                    WaterVisionClient.internal$blit(guiGraphics, TEXTURE, 1, 0, 0, 0, 0, this.width, this.height);
-                } else {
-                    final AspectRatioDimension dim = this.render$getAspectRatio(this.width, this.height, this.videoPlayer.width(), this.videoPlayer.height());
-                    WaterVisionClient.internal$blit(guiGraphics, TEXTURE, 1, dim.x, dim.y, 0, 0, dim.width, dim.height);
-                }
+        final boolean videoReady = this.isVideoReady();
+        if (this.videoPlayer != null && videoReady && (this.status == Status.OPENING_VIDEO || this.status == Status.CLOSING_VIDEO)) {
+            if (this.stretch) {
+                WaterVisionClient.internal$blit(guiGraphics, TEXTURE, 1, 0, 0, 0, 0, this.width, this.height);
+            } else {
+                final AspectRatioDimension dim = this.render$getAspectRatio(this.width, this.height, this.videoPlayer.width(), this.videoPlayer.height());
+                WaterVisionClient.internal$blit(guiGraphics, TEXTURE, 1, dim.x, dim.y, 0, 0, dim.width, dim.height);
             }
         }
 
         if (this.status != Status.OPENING_GAME && this.status != Status.CLOSING_GAME) {
             this.videoBackground.render(guiGraphics, this.width, this.height, this.status == Status.CLOSING_VIDEO, partialTick);
+        }
+
+        if (!videoReady && this.status != Status.CLOSING_GAME) {
+            this.renderLoadingIndicator(guiGraphics);
         }
 
         if (!FMLLoader.isProduction() && this.videoPlayer != null) {
@@ -137,6 +143,25 @@ public class VisionScreen extends Screen {
             guiGraphics.drawString(this.font, String.format("Orchestrator Status: %s", this.status.name()), 0, (this.height / 2) + 24, 0xFFFFFF);
             guiGraphics.drawString(this.font, String.format("Video Size: %sx%s", this.videoPlayer.width(), this.videoPlayer.height()), 0, (this.height / 2) + 36, 0xFFFFFF);
         }
+    }
+
+    private boolean isVideoReady() {
+        return this.videoPlayer != null && this.videoPlayer.texture() != 0 && this.videoPlayer.width() > 0 && this.videoPlayer.height() > 0;
+    }
+
+    private void renderLoadingIndicator(final GuiGraphics graphics) {
+        final int centerX = this.width / 2;
+        final int centerY = this.height / 2 + 24;
+        final int phase = (WaterVision.getTicks() / 6) % 4;
+
+        for (int i = 0; i < 4; i++) {
+            final int alpha = i == phase ? 255 : 90;
+            final int color = ((alpha & 255) << 24) | 0xFFFFFF;
+            final int x = centerX - 18 + i * 12;
+            graphics.fill(x, centerY, x + 6, centerY + 6, color);
+        }
+
+        graphics.drawCenteredString(this.font, "Chargement de la vidéo...", centerX, centerY + 14, 0xFFFFFFFF);
     }
 
     private AspectRatioDimension render$getAspectRatio(final int screenWidth, final int screenHeight, final int videoWidth, final int videoHeight) {
@@ -166,11 +191,24 @@ public class VisionScreen extends Screen {
     public void tick() {
         this.tryCreatePlayer();
 
+        if (this.videoPlayer != null && !this.resumeRequested) {
+            this.videoPlayer.resume();
+            this.resumeRequested = true;
+            WaterVision.LOGGER.info("WaterVision player resume requested for {}", this.uri);
+        }
+
+        if (this.videoPlayer != null && !this.isVideoReady() && this.status == Status.OPENING_GAME) {
+            this.waitingTicks++;
+            if (this.waitingTicks == 20 || this.waitingTicks == 100 || this.waitingTicks == 200) {
+                WaterVision.LOGGER.warn("WaterVision waiting for first video frame: status={}, texture={}, size={}x{}, uri={}", this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
+            }
+        }
+
         switch (this.status) {
             case OPENING_GAME -> {
-                if (this.gameBackground.isFadedIn() && this.videoPlayer != null) {
+                if (this.gameBackground.isFadedIn() && this.isVideoReady()) {
                     this.status = Status.OPENING_VIDEO;
-                    this.videoPlayer.resume();
+                    WaterVision.LOGGER.info("WaterVision first frame ready for {}", this.uri);
                 }
             }
             case OPENING_VIDEO -> {
