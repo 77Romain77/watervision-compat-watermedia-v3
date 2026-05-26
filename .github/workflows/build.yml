@@ -5,6 +5,9 @@ on:
   push:
     branches:
       - watermedia-v3-compat
+  pull_request:
+    branches:
+      - 1.20.1
 
 jobs:
   build:
