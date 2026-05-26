@@ -27,7 +27,7 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
-      - name: Build
+      - name: Build with stacktrace
         run: ./gradlew --no-daemon clean build --stacktrace
 
       - name: Upload jar
