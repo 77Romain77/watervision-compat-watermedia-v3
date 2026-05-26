@@ -47,7 +47,7 @@ public class VisionOverlay {
         if (!Objects.equals(activeUri, uri)) {
             releaseOverlay();
             activeUri = uri;
-            mrl = MediaAPI.getMRL(uri);
+            mrl = MediaAPI.getMRL(uri.toString());
             failureReported = false;
         }
 
@@ -96,15 +96,15 @@ public class VisionOverlay {
             return;
         }
 
-        if (mrl.hasError()) {
+        if (mrl.error()) {
             reportFailure("Failed to load a video overlay");
-            WaterVision.LOGGER.error("Failed to load overlay media resource: {}", activeUri, mrl.exception());
+            WaterVision.LOGGER.error("Failed to load overlay media resource: {}", activeUri);
             releaseOverlay();
             uri = null;
             return;
         }
 
-        player = MediaAPI.createPlayer(mrl, VisionOverlay::createGfxEngine, VisionOverlay::createSfxEngine);
+        player = mrl.createPlayer(createGfxEngine(), createSfxEngine());
         if (player == null) {
             reportFailure("Failed to create a video overlay player");
             WaterVision.LOGGER.error("WaterMedia v3 failed to create an overlay player for: {}", activeUri);
