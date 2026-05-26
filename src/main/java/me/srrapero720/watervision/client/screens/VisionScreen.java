@@ -25,11 +25,11 @@ import java.util.Date;
 import java.util.TimeZone;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "auto-reopen-no-poll";
+    private static final String BUILD_TAG = "auto-reopen-clean-no-poll";
     private static final DateFormat FORMAT = new SimpleDateFormat("HH:mm:ss");
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int FIRST_FRAME_WAIT_LIMIT = 40;
-    private static final int MAX_REOPENS = 2;
+    private static final int MAX_REOPENS = 3;
     private static final int REOPEN_DELAY = 20;
 
     static {
@@ -86,7 +86,7 @@ public class VisionScreen extends Screen {
     }
 
     private void tryCreatePlayer() {
-        if (this.videoPlayer != null || this.failedToCreatePlayer || !this.mrl.ready()) return;
+        if (this.reopenScheduled || this.released || this.videoPlayer != null || this.failedToCreatePlayer || !this.mrl.ready()) return;
 
         if (this.mrl.error()) {
             this.failedToCreatePlayer = true;
@@ -129,7 +129,7 @@ public class VisionScreen extends Screen {
 
     @Override
     public void render(final GuiGraphics guiGraphics, final int pMouseX, final int pMouseY, final float partialTick) {
-        this.tryCreatePlayer();
+        if (!this.reopenScheduled) this.tryCreatePlayer();
 
         this.gameBackground.render(guiGraphics, this.width, this.height, this.status != Status.CLOSING_GAME, partialTick);
 
@@ -255,6 +255,7 @@ public class VisionScreen extends Screen {
     private void scheduleReopen() {
         WaterVision.LOGGER.warn("WaterVision first frame timeout, scheduling screen reopen [{}] ({}/{}): status={}, texture={}, size={}x{}, uri={}", BUILD_TAG, this.reopenCount + 1, MAX_REOPENS, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
         this.releasePlayerOnly();
+        this.failedToCreatePlayer = true;
         this.resumeRequested = false;
         this.waitingTicks = 0;
         this.reopenScheduled = true;
