@@ -25,12 +25,12 @@ import java.util.Date;
 import java.util.TimeZone;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "auto-reopen-clean-no-poll";
+    private static final String BUILD_TAG = "auto-reopen-backoff-no-poll";
     private static final DateFormat FORMAT = new SimpleDateFormat("HH:mm:ss");
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
-    private static final int FIRST_FRAME_WAIT_LIMIT = 40;
+    private static final int FIRST_FRAME_WAIT_LIMIT = 60;
     private static final int MAX_REOPENS = 3;
-    private static final int REOPEN_DELAY = 20;
+    private static final int[] REOPEN_DELAYS = {120, 200, 300};
 
     static {
         FORMAT.setTimeZone(TimeZone.getTimeZone("GMT-00:00"));
@@ -53,6 +53,7 @@ public class VisionScreen extends Screen {
     private boolean released;
     private boolean resumeRequested;
     private boolean reopenScheduled;
+    private boolean exhaustedLogged;
     private int waitingTicks;
     private int reopenDelayTicks;
 
@@ -201,6 +202,9 @@ public class VisionScreen extends Screen {
         if (this.reopenScheduled) {
             if (this.reopenDelayTicks > 0) {
                 this.reopenDelayTicks--;
+                if (this.reopenDelayTicks == 0) {
+                    WaterVision.LOGGER.warn("WaterVision backoff delay finished [{}] reopen={}/{} for {}", BUILD_TAG, this.reopenCount + 1, MAX_REOPENS, this.uri);
+                }
                 return;
             }
             WaterVision.LOGGER.warn("WaterVision reopening screen [{}] reopen={}/{} for {}", BUILD_TAG, this.reopenCount + 1, MAX_REOPENS, this.uri);
@@ -218,12 +222,16 @@ public class VisionScreen extends Screen {
 
         if (this.videoPlayer != null && !this.isVideoReady() && this.status == Status.OPENING_GAME) {
             this.waitingTicks++;
-            if (this.waitingTicks == 20 || this.waitingTicks == 40 || this.waitingTicks == 80) {
+            if (this.waitingTicks == 20 || this.waitingTicks == 60 || this.waitingTicks == 120) {
                 WaterVision.LOGGER.warn("WaterVision waiting for first video frame [{}]: status={}, texture={}, size={}x{}, reopen={}/{}, uri={}", BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.reopenCount, MAX_REOPENS, this.uri);
             }
             if (this.waitingTicks >= FIRST_FRAME_WAIT_LIMIT && this.reopenCount < MAX_REOPENS) {
                 this.scheduleReopen();
                 return;
+            }
+            if (this.waitingTicks >= FIRST_FRAME_WAIT_LIMIT && this.reopenCount >= MAX_REOPENS && !this.exhaustedLogged) {
+                this.exhaustedLogged = true;
+                WaterVision.LOGGER.error("WaterVision exhausted screen reopen attempts [{}]: status={}, texture={}, size={}x{}, uri={}", BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
             }
         }
 
@@ -253,13 +261,14 @@ public class VisionScreen extends Screen {
     }
 
     private void scheduleReopen() {
-        WaterVision.LOGGER.warn("WaterVision first frame timeout, scheduling screen reopen [{}] ({}/{}): status={}, texture={}, size={}x{}, uri={}", BUILD_TAG, this.reopenCount + 1, MAX_REOPENS, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
+        final int delay = REOPEN_DELAYS[Math.min(this.reopenCount, REOPEN_DELAYS.length - 1)];
+        WaterVision.LOGGER.warn("WaterVision first frame timeout, scheduling screen reopen [{}] ({}/{}): delay={} ticks, status={}, texture={}, size={}x{}, uri={}", BUILD_TAG, this.reopenCount + 1, MAX_REOPENS, delay, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
         this.releasePlayerOnly();
         this.failedToCreatePlayer = true;
         this.resumeRequested = false;
         this.waitingTicks = 0;
         this.reopenScheduled = true;
-        this.reopenDelayTicks = REOPEN_DELAY;
+        this.reopenDelayTicks = delay;
     }
 
     private void releasePlayerOnly() {
