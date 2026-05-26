@@ -16,6 +16,7 @@ import org.watermedia.api.media.MRL;
 import org.watermedia.api.media.MediaAPI;
 import org.watermedia.api.media.engines.ALEngine;
 import org.watermedia.api.media.engines.GLEngine;
+import org.watermedia.api.media.players.FFMediaPlayer;
 import org.watermedia.api.media.players.MediaPlayer;
 
 import java.net.URI;
@@ -154,6 +155,12 @@ public class VisionScreen extends Screen {
         return this.videoPlayer != null && this.videoPlayer.texture() != 0 && this.videoPlayer.width() > 0 && this.videoPlayer.height() > 0;
     }
 
+    private void pollVideoFrame() {
+        if (this.videoPlayer instanceof FFMediaPlayer ffMediaPlayer) {
+            ffMediaPlayer.pollVideoFrame();
+        }
+    }
+
     private void renderLoadingIndicator(final GuiGraphics graphics) {
         final int y = this.height - 28;
         final int startX = this.width - 56;
@@ -207,6 +214,10 @@ public class VisionScreen extends Screen {
             this.videoPlayer.resume();
             this.resumeRequested = true;
             WaterVision.LOGGER.info("WaterVision player resume requested for {}", this.uri);
+        }
+
+        if (this.videoPlayer != null) {
+            this.pollVideoFrame();
         }
 
         if (this.videoPlayer != null && !this.isVideoReady() && this.status == Status.OPENING_GAME) {
