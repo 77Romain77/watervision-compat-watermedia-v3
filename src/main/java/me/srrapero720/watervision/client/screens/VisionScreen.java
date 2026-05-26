@@ -16,7 +16,6 @@ import org.watermedia.api.media.MRL;
 import org.watermedia.api.media.MediaAPI;
 import org.watermedia.api.media.engines.ALEngine;
 import org.watermedia.api.media.engines.GLEngine;
-import org.watermedia.api.media.players.FFMediaPlayer;
 import org.watermedia.api.media.players.MediaPlayer;
 
 import java.net.URI;
@@ -110,12 +109,6 @@ public class VisionScreen extends Screen {
         return ALEngine.buildDefault();
     }
 
-    private void pollVideoFrame() {
-        if (this.videoPlayer instanceof FFMediaPlayer ffMediaPlayer) {
-            ffMediaPlayer.pollVideoFrame();
-        }
-    }
-
     @Override
     public void render(final GuiGraphics guiGraphics, final int pMouseX, final int pMouseY, final float partialTick) {
         this.tryCreatePlayer();
@@ -123,8 +116,6 @@ public class VisionScreen extends Screen {
         this.gameBackground.render(guiGraphics, this.width, this.height, this.status != Status.CLOSING_GAME, partialTick);
 
         if (this.videoPlayer != null && (this.status == Status.OPENING_VIDEO || this.status == Status.CLOSING_VIDEO)) {
-            this.pollVideoFrame();
-
             if (this.videoPlayer.texture() != 0 && this.videoPlayer.width() > 0 && this.videoPlayer.height() > 0) {
                 if (this.stretch) {
                     WaterVisionClient.internal$blit(guiGraphics, TEXTURE, 1, 0, 0, 0, 0, this.width, this.height);
@@ -139,10 +130,6 @@ public class VisionScreen extends Screen {
             this.videoBackground.render(guiGraphics, this.width, this.height, this.status == Status.CLOSING_VIDEO, partialTick);
         }
 
-        if (this.shouldRenderLoadingIcon()) {
-            this.render$loadingIcon(guiGraphics, partialTick);
-        }
-
         if (!FMLLoader.isProduction() && this.videoPlayer != null) {
             guiGraphics.drawString(this.font, String.format("State: %s", this.videoPlayer.status().name()), 0, (this.height / 2) - 12, 0xFFFFFF);
             guiGraphics.drawString(this.font, String.format("Time: %s (%s) / %s (%s)", FORMAT.format(new Date(this.videoPlayer.time())), this.videoPlayer.time(), FORMAT.format(new Date(this.videoPlayer.duration())), this.videoPlayer.duration()), 0, (this.height / 2), 0xFFFFFF);
@@ -150,19 +137,6 @@ public class VisionScreen extends Screen {
             guiGraphics.drawString(this.font, String.format("Orchestrator Status: %s", this.status.name()), 0, (this.height / 2) + 24, 0xFFFFFF);
             guiGraphics.drawString(this.font, String.format("Video Size: %sx%s", this.videoPlayer.width(), this.videoPlayer.height()), 0, (this.height / 2) + 36, 0xFFFFFF);
         }
-    }
-
-    private boolean shouldRenderLoadingIcon() {
-        return this.status == Status.OPENING_GAME
-                || this.status == Status.CLOSING_VIDEO
-                || this.status == Status.CLOSING_GAME
-                || this.videoPlayer == null
-                || this.videoPlayer.buffering()
-                || this.videoPlayer.loading();
-    }
-
-    private void render$loadingIcon(GuiGraphics graphics, float partialTick) {
-        WaterVisionClient.internal$blit(graphics, WaterVision.LOADING_ANIM_TEXTURE, 1, this.width - 40, this.height - 40, 0, 0, 40, 40);
     }
 
     private AspectRatioDimension render$getAspectRatio(final int screenWidth, final int screenHeight, final int videoWidth, final int videoHeight) {
