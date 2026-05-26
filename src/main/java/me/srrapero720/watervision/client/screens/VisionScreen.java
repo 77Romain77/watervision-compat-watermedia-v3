@@ -63,7 +63,7 @@ public class VisionScreen extends Screen {
         this.videoBackground = new FadeBackground(videoFadeDuration);
         this.videoBackground.forceFadeIn();
 
-        this.mrl = MediaAPI.getMRL(uri);
+        this.mrl = MediaAPI.getMRL(uri.toString());
         Minecraft.getInstance().getSoundManager().pause();
     }
 
@@ -72,14 +72,14 @@ public class VisionScreen extends Screen {
             return;
         }
 
-        if (this.mrl.hasError()) {
+        if (this.mrl.error()) {
             this.failedToCreatePlayer = true;
-            WaterVision.LOGGER.error("Failed to load media resource: {}", this.uri, this.mrl.exception());
+            WaterVision.LOGGER.error("Failed to load media resource: {}", this.uri);
             this.status = Status.CLOSING_VIDEO;
             return;
         }
 
-        this.videoPlayer = MediaAPI.createPlayer(this.mrl, this::createGfxEngine, this::createSfxEngine);
+        this.videoPlayer = this.mrl.createPlayer(this.createGfxEngine(), this.createSfxEngine());
         if (this.videoPlayer == null) {
             this.failedToCreatePlayer = true;
             WaterVision.LOGGER.error("WaterMedia v3 failed to create a player for: {}", this.uri);
