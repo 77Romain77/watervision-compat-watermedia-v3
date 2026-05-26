@@ -25,12 +25,12 @@ import java.util.Date;
 import java.util.TimeZone;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "no-manual-poll-retry-delay";
+    private static final String BUILD_TAG = "no-manual-poll-fast-retry";
     private static final DateFormat FORMAT = new SimpleDateFormat("HH:mm:ss");
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
-    private static final int FIRST_FRAME_WAIT_LIMIT = 100;
-    private static final int MAX_PLAYER_REFRESHES = 3;
-    private static final int PLAYER_REFRESH_DELAY = 20;
+    private static final int FIRST_FRAME_WAIT_LIMIT = 40;
+    private static final int MAX_PLAYER_REFRESHES = 5;
+    private static final int PLAYER_REFRESH_DELAY = 5;
 
     static {
         FORMAT.setTimeZone(TimeZone.getTimeZone("GMT-00:00"));
@@ -213,7 +213,7 @@ public class VisionScreen extends Screen {
 
         if (this.videoPlayer != null && !this.isVideoReady() && this.status == Status.OPENING_GAME) {
             this.waitingTicks++;
-            if (this.waitingTicks == 20 || this.waitingTicks == 100 || this.waitingTicks == 200) {
+            if (this.waitingTicks == 20 || this.waitingTicks == 40 || this.waitingTicks == 80) {
                 WaterVision.LOGGER.warn("WaterVision waiting for first video frame [{}]: status={}, texture={}, size={}x{}, refresh={}/{}, uri={}", BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.playerRefreshes, MAX_PLAYER_REFRESHES, this.uri);
             }
             if (this.waitingTicks >= FIRST_FRAME_WAIT_LIMIT && this.playerRefreshes < MAX_PLAYER_REFRESHES) {
