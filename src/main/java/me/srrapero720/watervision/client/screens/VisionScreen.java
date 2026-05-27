@@ -18,6 +18,7 @@ import org.watermedia.api.media.engines.ALEngine;
 import org.watermedia.api.media.engines.GLEngine;
 import org.watermedia.api.media.players.MediaPlayer;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.text.DateFormat;
@@ -27,7 +28,7 @@ import java.util.TimeZone;
 import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "clean-reflect-player-no-poll";
+    private static final String BUILD_TAG = "wm-diagnostics-reflect-no-poll";
     private static final DateFormat FORMAT = new SimpleDateFormat("HH:mm:ss");
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
 
@@ -49,6 +50,7 @@ public class VisionScreen extends Screen {
     private boolean released;
     private boolean resumeRequested;
     private boolean waitLogged;
+    private boolean firstFrameDiagnosticsLogged;
     private int waitingTicks;
 
     private Status status = Status.OPENING_GAME;
@@ -94,6 +96,7 @@ public class VisionScreen extends Screen {
         Minecraft.getInstance().getTextureManager().register(TEXTURE, this.textureWrapper);
         this.videoPlayer.startPaused();
         WaterVision.LOGGER.info("WaterVision player created [{}] for {}", BUILD_TAG, this.uri);
+        this.logWaterMediaDiagnostics("player-created");
     }
 
     private MediaPlayer createCompatiblePlayer() {
@@ -213,16 +216,19 @@ public class VisionScreen extends Screen {
             this.videoPlayer.resume();
             this.resumeRequested = true;
             WaterVision.LOGGER.info("WaterVision player resume requested [{}] for {}", BUILD_TAG, this.uri);
+            this.logWaterMediaDiagnostics("resume-requested");
         }
 
         if (this.videoPlayer != null && !this.isVideoReady() && this.status == Status.OPENING_GAME) {
             this.waitingTicks++;
-            if (this.waitingTicks == 20 || this.waitingTicks == 100 || this.waitingTicks == 200) {
+            if (this.waitingTicks == 20 || this.waitingTicks == 60 || this.waitingTicks == 100 || this.waitingTicks == 200 || this.waitingTicks == 400) {
                 WaterVision.LOGGER.warn("WaterVision waiting for first video frame [{}]: status={}, texture={}, size={}x{}, uri={}", BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
+                this.logWaterMediaDiagnostics("waiting-" + this.waitingTicks);
             }
             if (this.waitingTicks >= 200 && !this.waitLogged) {
                 this.waitLogged = true;
                 WaterVision.LOGGER.error("WaterVision first frame still missing [{}]: status={}, texture={}, size={}x{}, uri={}", BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
+                this.logWaterMediaDiagnostics("first-frame-missing");
             }
         }
 
@@ -232,6 +238,10 @@ public class VisionScreen extends Screen {
                     this.status = Status.OPENING_VIDEO;
                     this.waitingTicks = 0;
                     WaterVision.LOGGER.info("WaterVision first frame ready [{}] for {}", BUILD_TAG, this.uri);
+                    if (!this.firstFrameDiagnosticsLogged) {
+                        this.firstFrameDiagnosticsLogged = true;
+                        this.logWaterMediaDiagnostics("first-frame-ready");
+                    }
                 }
             }
             case OPENING_VIDEO -> {
@@ -249,6 +259,153 @@ public class VisionScreen extends Screen {
                 }
             }
         }
+    }
+
+    private void logWaterMediaDiagnostics(final String stage) {
+        if (this.videoPlayer == null) return;
+
+        try {
+            final Object player = this.videoPlayer;
+            final Object gfx = this.getFieldValue(player, "gfx");
+            final Object clock = this.getFieldValue(player, "clock");
+            final Object demuxThread = this.getFieldValue(player, "demuxThread");
+            final Object videoThread = this.getFieldValue(player, "videoDecodeThread");
+            final Object audioThread = this.getFieldValue(player, "audioDecodeThread");
+
+            WaterVision.LOGGER.warn("WaterVision WM_DIAG [{}] stage={} playerClass={} wmStatus={} texture={} size={}x{} time={} duration={} clock={} vIdx={} aIdx={} hwCtx={} fmtCtx={} vCodec={} aCodec={} rendered={} skipped={} uri={}",
+                    BUILD_TAG,
+                    stage,
+                    player.getClass().getName(),
+                    safeStatus(player),
+                    safeTexture(player),
+                    safeWidth(player),
+                    safeHeight(player),
+                    safeTime(player),
+                    safeDuration(player),
+                    clock,
+                    this.getFieldValue(player, "videoStreamIndex"),
+                    this.getFieldValue(player, "audioStreamIndex"),
+                    this.exists(this.getFieldValue(player, "hwDeviceCtx")),
+                    this.exists(this.getFieldValue(player, "formatContext")),
+                    this.exists(this.getFieldValue(player, "videoCodecContext")),
+                    this.exists(this.getFieldValue(player, "audioCodecContext")),
+                    this.getFieldValue(player, "totalRenderedFrames"),
+                    this.getFieldValue(player, "totalSkippedFrames"),
+                    this.uri);
+
+            WaterVision.LOGGER.warn("WaterVision WM_DIAG [{}] stage={} threads demux={} video={} audio={}",
+                    BUILD_TAG,
+                    stage,
+                    this.threadSummary(demuxThread),
+                    this.threadSummary(videoThread),
+                    this.threadSummary(audioThread));
+
+            WaterVision.LOGGER.warn("WaterVision WM_DIAG [{}] stage={} queues vPackets={} aPackets={} vFrames={} aFrames={}",
+                    BUILD_TAG,
+                    stage,
+                    this.queueSummary(this.getFieldValue(player, "videoPacketQueue")),
+                    this.queueSummary(this.getFieldValue(player, "audioPacketQueue")),
+                    this.queueSummary(this.getFieldValue(player, "videoFrameQueue")),
+                    this.queueSummary(this.getFieldValue(player, "audioFrameQueue")));
+
+            WaterVision.LOGGER.warn("WaterVision WM_DIAG [{}] stage={} gfx={}", BUILD_TAG, stage, this.gfxSummary(gfx));
+        } catch (final Throwable throwable) {
+            WaterVision.LOGGER.warn("WaterVision WM_DIAG [{}] stage={} failed to inspect WaterMedia internals", BUILD_TAG, stage, throwable);
+        }
+    }
+
+    private static Object safeStatus(final Object player) {
+        return callNoArg(player, "status");
+    }
+
+    private static Object safeTexture(final Object player) {
+        return callNoArg(player, "texture");
+    }
+
+    private static Object safeWidth(final Object player) {
+        return callNoArg(player, "width");
+    }
+
+    private static Object safeHeight(final Object player) {
+        return callNoArg(player, "height");
+    }
+
+    private static Object safeTime(final Object player) {
+        return callNoArg(player, "time");
+    }
+
+    private static Object safeDuration(final Object player) {
+        return callNoArg(player, "duration");
+    }
+
+    private Object getFieldValue(final Object target, final String name) {
+        if (target == null) return null;
+        Class<?> clazz = target.getClass();
+        while (clazz != null) {
+            try {
+                final Field field = clazz.getDeclaredField(name);
+                field.setAccessible(true);
+                return field.get(target);
+            } catch (final NoSuchFieldException ignored) {
+                clazz = clazz.getSuperclass();
+            } catch (final Throwable throwable) {
+                return "field-error:" + throwable.getClass().getSimpleName();
+            }
+        }
+        return "missing:" + name;
+    }
+
+    private static Object callNoArg(final Object target, final String methodName) {
+        if (target == null) return null;
+        try {
+            final Method method = target.getClass().getMethod(methodName);
+            method.setAccessible(true);
+            return method.invoke(target);
+        } catch (final Throwable throwable) {
+            return "method-error:" + methodName + ":" + throwable.getClass().getSimpleName();
+        }
+    }
+
+    private String exists(final Object value) {
+        if (value == null) return "false";
+        if (value instanceof final String string && string.startsWith("missing:")) return "missing";
+        return "true";
+    }
+
+    private String threadSummary(final Object value) {
+        if (!(value instanceof final Thread thread)) return String.valueOf(value);
+        return thread.getName() + "{alive=" + thread.isAlive() + ", state=" + thread.getState() + ", interrupted=" + thread.isInterrupted() + "}";
+    }
+
+    private String queueSummary(final Object queue) {
+        if (queue == null) return "null";
+        final String className = queue.getClass().getSimpleName();
+        return className + "{" +
+                "count=" + callNoArg(queue, "count") +
+                ", bytes=" + callNoArg(queue, "byteSize") +
+                ", remaining=" + callNoArg(queue, "remaining") +
+                ", empty=" + callNoArg(queue, "isEmpty") +
+                ", serial=" + callNoArg(queue, "serial") +
+                ", aborted=" + this.getFieldValue(queue, "aborted") +
+                ", finished=" + this.getFieldValue(queue, "finished") +
+                '}';
+    }
+
+    private String gfxSummary(final Object gfx) {
+        if (gfx == null) return "null";
+        return gfx.getClass().getName() + "{" +
+                "texture=" + callNoArg(gfx, "texture") +
+                ", width=" + this.getFieldValue(gfx, "width") +
+                ", height=" + this.getFieldValue(gfx, "height") +
+                ", pixelFormat=" + this.getFieldValue(gfx, "pixelFormat") +
+                ", managedTexture=" + this.getFieldValue(gfx, "managedTexture") +
+                ", managedTextureW=" + this.getFieldValue(gfx, "managedTextureW") +
+                ", managedTextureH=" + this.getFieldValue(gfx, "managedTextureH") +
+                ", activeFrameTexture=" + this.getFieldValue(gfx, "activeFrameTexture") +
+                ", pboInitialized=" + this.getFieldValue(gfx, "pboInitialized") +
+                ", pboReady=" + this.getFieldValue(gfx, "pboReady") +
+                ", firstFrame=" + this.getFieldValue(gfx, "firstFrame") +
+                '}';
     }
 
     private void releasePlayerOnly() {
