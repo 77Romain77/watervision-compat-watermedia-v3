@@ -18,14 +18,16 @@ import org.watermedia.api.media.engines.ALEngine;
 import org.watermedia.api.media.engines.GLEngine;
 import org.watermedia.api.media.players.MediaPlayer;
 
+import java.lang.reflect.Method;
 import java.net.URI;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.TimeZone;
+import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "clean-mediaapi-player-no-poll";
+    private static final String BUILD_TAG = "clean-reflect-player-no-poll";
     private static final DateFormat FORMAT = new SimpleDateFormat("HH:mm:ss");
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
 
@@ -76,10 +78,10 @@ public class VisionScreen extends Screen {
             return;
         }
 
-        this.videoPlayer = MediaAPI.createPlayer(this.mrl, this::createGfxEngine, this::createSfxEngine);
+        this.videoPlayer = this.createCompatiblePlayer();
         if (this.videoPlayer == null) {
             this.failedToCreatePlayer = true;
-            WaterVision.LOGGER.error("WaterMedia v3 failed to create a player for: {}", this.uri);
+            WaterVision.LOGGER.error("WaterMedia failed to create a player [{}] for: {}", BUILD_TAG, this.uri);
             this.status = Status.CLOSING_VIDEO;
             return;
         }
@@ -92,6 +94,32 @@ public class VisionScreen extends Screen {
         Minecraft.getInstance().getTextureManager().register(TEXTURE, this.textureWrapper);
         this.videoPlayer.startPaused();
         WaterVision.LOGGER.info("WaterVision player created [{}] for {}", BUILD_TAG, this.uri);
+    }
+
+    private MediaPlayer createCompatiblePlayer() {
+        try {
+            final Method newCreatePlayer = MediaAPI.class.getMethod("createPlayer", MRL.class, Supplier.class, Supplier.class);
+            final Object player = newCreatePlayer.invoke(null, this.mrl, (Supplier<GLEngine>) this::createGfxEngine, (Supplier<ALEngine>) this::createSfxEngine);
+            WaterVision.LOGGER.info("WaterVision using MediaAPI.createPlayer compatibility path [{}]", BUILD_TAG);
+            return (MediaPlayer) player;
+        } catch (final NoSuchMethodException ignored) {
+            // Older WaterMedia API. Fall back to MRL#createPlayer below.
+        } catch (final Throwable throwable) {
+            WaterVision.LOGGER.error("WaterVision failed to create player through MediaAPI.createPlayer [{}]", BUILD_TAG, throwable);
+            return null;
+        }
+
+        try {
+            final Class<?> gfxEngineClass = Class.forName("org.watermedia.api.media.engines.GFXEngine");
+            final Class<?> sfxEngineClass = Class.forName("org.watermedia.api.media.engines.SFXEngine");
+            final Method legacyCreatePlayer = this.mrl.getClass().getMethod("createPlayer", gfxEngineClass, sfxEngineClass);
+            final Object player = legacyCreatePlayer.invoke(this.mrl, this.createGfxEngine(), this.createSfxEngine());
+            WaterVision.LOGGER.info("WaterVision using MRL.createPlayer compatibility path [{}]", BUILD_TAG);
+            return (MediaPlayer) player;
+        } catch (final Throwable throwable) {
+            WaterVision.LOGGER.error("WaterVision failed to create player through MRL.createPlayer [{}]", BUILD_TAG, throwable);
+            return null;
+        }
     }
 
     private GLEngine createGfxEngine() {
