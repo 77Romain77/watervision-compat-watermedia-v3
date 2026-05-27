@@ -25,7 +25,7 @@ import java.util.Date;
 import java.util.TimeZone;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "clean-no-reopen-no-poll-no-mrl-error";
+    private static final String BUILD_TAG = "clean-mediaapi-player-no-poll";
     private static final DateFormat FORMAT = new SimpleDateFormat("HH:mm:ss");
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
 
@@ -76,7 +76,7 @@ public class VisionScreen extends Screen {
             return;
         }
 
-        this.videoPlayer = this.mrl.createPlayer(this.createGfxEngine(), this.createSfxEngine());
+        this.videoPlayer = MediaAPI.createPlayer(this.mrl, this::createGfxEngine, this::createSfxEngine);
         if (this.videoPlayer == null) {
             this.failedToCreatePlayer = true;
             WaterVision.LOGGER.error("WaterMedia v3 failed to create a player for: {}", this.uri);
