@@ -25,7 +25,7 @@ import java.util.Date;
 import java.util.TimeZone;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "clean-no-reopen-no-poll";
+    private static final String BUILD_TAG = "clean-no-reopen-no-poll-no-mrl-error";
     private static final DateFormat FORMAT = new SimpleDateFormat("HH:mm:ss");
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
 
@@ -73,13 +73,6 @@ public class VisionScreen extends Screen {
 
     private void tryCreatePlayer() {
         if (this.released || this.videoPlayer != null || this.failedToCreatePlayer || !this.mrl.ready()) {
-            return;
-        }
-
-        if (this.mrl.error()) {
-            this.failedToCreatePlayer = true;
-            WaterVision.LOGGER.error("Failed to load media resource: {}", this.uri);
-            this.status = Status.CLOSING_VIDEO;
             return;
         }
 
