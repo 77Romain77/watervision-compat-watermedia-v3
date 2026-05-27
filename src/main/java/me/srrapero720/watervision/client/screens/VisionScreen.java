@@ -28,7 +28,7 @@ import java.util.TimeZone;
 import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "wm-diagnostics-reflect-no-poll";
+    private static final String BUILD_TAG = "wm-kick-decode-no-reopen";
     private static final DateFormat FORMAT = new SimpleDateFormat("HH:mm:ss");
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
 
@@ -221,6 +221,11 @@ public class VisionScreen extends Screen {
 
         if (this.videoPlayer != null && !this.isVideoReady() && this.status == Status.OPENING_GAME) {
             this.waitingTicks++;
+
+            if (this.waitingTicks == 10 || this.waitingTicks == 20 || this.waitingTicks == 40 || this.waitingTicks == 80 || this.waitingTicks == 160) {
+                this.kickWaterMediaDecodeThreadsIfNeeded("waiting-" + this.waitingTicks);
+            }
+
             if (this.waitingTicks == 20 || this.waitingTicks == 60 || this.waitingTicks == 100 || this.waitingTicks == 200 || this.waitingTicks == 400) {
                 WaterVision.LOGGER.warn("WaterVision waiting for first video frame [{}]: status={}, texture={}, size={}x{}, uri={}", BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
                 this.logWaterMediaDiagnostics("waiting-" + this.waitingTicks);
@@ -258,6 +263,30 @@ public class VisionScreen extends Screen {
                     super.onClose();
                 }
             }
+        }
+    }
+
+    private void kickWaterMediaDecodeThreadsIfNeeded(final String stage) {
+        if (this.videoPlayer == null) return;
+
+        try {
+            final Object player = this.videoPlayer;
+            final boolean demuxAlive = this.isThreadAlive(this.getFieldValue(player, "demuxThread"));
+            final boolean videoMissing = this.isPresent(this.getFieldValue(player, "videoCodecContext")) && !this.isThreadAlive(this.getFieldValue(player, "videoDecodeThread"));
+            final boolean audioMissing = this.isPresent(this.getFieldValue(player, "audioCodecContext")) && !this.isThreadAlive(this.getFieldValue(player, "audioDecodeThread"));
+            final int videoPackets = this.toInt(callNoArg(this.getFieldValue(player, "videoPacketQueue"), "count"));
+            final int audioPackets = this.toInt(callNoArg(this.getFieldValue(player, "audioPacketQueue"), "count"));
+
+            if (!demuxAlive || (!videoMissing && !audioMissing)) return;
+
+            final Method ensureDecodeThreads = player.getClass().getDeclaredMethod("ensureDecodeThreads");
+            ensureDecodeThreads.setAccessible(true);
+            ensureDecodeThreads.invoke(player);
+
+            WaterVision.LOGGER.warn("WaterVision WM_RECOVERY [{}] stage={} invoked ensureDecodeThreads: demuxAlive={}, videoMissing={}, audioMissing={}, videoPackets={}, audioPackets={}, uri={}",
+                    BUILD_TAG, stage, demuxAlive, videoMissing, audioMissing, videoPackets, audioPackets, this.uri);
+        } catch (final Throwable throwable) {
+            WaterVision.LOGGER.warn("WaterVision WM_RECOVERY [{}] stage={} failed to invoke ensureDecodeThreads", BUILD_TAG, stage, throwable);
         }
     }
 
@@ -314,29 +343,12 @@ public class VisionScreen extends Screen {
         }
     }
 
-    private static Object safeStatus(final Object player) {
-        return callNoArg(player, "status");
-    }
-
-    private static Object safeTexture(final Object player) {
-        return callNoArg(player, "texture");
-    }
-
-    private static Object safeWidth(final Object player) {
-        return callNoArg(player, "width");
-    }
-
-    private static Object safeHeight(final Object player) {
-        return callNoArg(player, "height");
-    }
-
-    private static Object safeTime(final Object player) {
-        return callNoArg(player, "time");
-    }
-
-    private static Object safeDuration(final Object player) {
-        return callNoArg(player, "duration");
-    }
+    private static Object safeStatus(final Object player) { return callNoArg(player, "status"); }
+    private static Object safeTexture(final Object player) { return callNoArg(player, "texture"); }
+    private static Object safeWidth(final Object player) { return callNoArg(player, "width"); }
+    private static Object safeHeight(final Object player) { return callNoArg(player, "height"); }
+    private static Object safeTime(final Object player) { return callNoArg(player, "time"); }
+    private static Object safeDuration(final Object player) { return callNoArg(player, "duration"); }
 
     private Object getFieldValue(final Object target, final String name) {
         if (target == null) return null;
@@ -366,10 +378,25 @@ public class VisionScreen extends Screen {
         }
     }
 
+    private boolean isPresent(final Object value) {
+        if (value == null) return false;
+        if (value instanceof final String string && (string.startsWith("missing:") || string.startsWith("field-error:"))) return false;
+        return true;
+    }
+
     private String exists(final Object value) {
         if (value == null) return "false";
         if (value instanceof final String string && string.startsWith("missing:")) return "missing";
         return "true";
+    }
+
+    private boolean isThreadAlive(final Object value) {
+        return value instanceof final Thread thread && thread.isAlive() && !thread.isInterrupted();
+    }
+
+    private int toInt(final Object value) {
+        if (value instanceof final Number number) return number.intValue();
+        return -1;
     }
 
     private String threadSummary(final Object value) {
