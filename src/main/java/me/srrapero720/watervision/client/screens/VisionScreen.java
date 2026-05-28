@@ -26,7 +26,7 @@ import java.net.URI;
 import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-tuned-debug";
+    private static final String BUILD_TAG = "cinematic-ui-dynamic-tips-debug";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 40;
@@ -182,13 +182,18 @@ public class VisionScreen extends Screen {
     }
 
     private void renderTips(final GuiGraphics graphics, final int x, final int y) {
-        final int width = 178;
+        final String title = "Tips :";
+        final String mask = "Masquer : touche K";
+        final String volume = "Régler le volume : ↑ / ↓";
+        final String skip = "Passer : maintenir Échap";
+        final int maxTextWidth = Math.max(Math.max(this.font.width(title), this.font.width(mask)), Math.max(this.font.width(volume), this.exit ? this.font.width(skip) : 0));
+        final int width = Math.max(80, maxTextWidth + 10);
         final int height = this.tipsHeight();
         graphics.fill(x - 5, y - 5, x + width, y + height, 0xAA000000);
-        graphics.drawString(this.font, "Tips :", x, y, 0xFFFFFF);
-        graphics.drawString(this.font, "Masquer : touche K", x, y + 11, 0xDDDDDD);
-        graphics.drawString(this.font, "Régler le volume : ↑ / ↓", x, y + 22, 0xDDDDDD);
-        if (this.exit) graphics.drawString(this.font, "Passer : maintenir Échap", x, y + 33, 0xDDDDDD);
+        graphics.drawString(this.font, title, x, y, 0xFFFFFF);
+        graphics.drawString(this.font, mask, x, y + 11, 0xDDDDDD);
+        graphics.drawString(this.font, volume, x, y + 22, 0xDDDDDD);
+        if (this.exit) graphics.drawString(this.font, skip, x, y + 33, 0xDDDDDD);
     }
 
     private void renderVolumeOverlay(final GuiGraphics graphics, final int x, final int y) {
