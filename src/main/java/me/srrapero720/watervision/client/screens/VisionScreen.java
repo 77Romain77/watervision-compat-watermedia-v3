@@ -1,8 +1,10 @@
 package me.srrapero720.watervision.client.screens;
 
 import com.mojang.blaze3d.platform.GlStateManager;
+import com.mojang.blaze3d.platform.InputConstants;
 import me.srrapero720.watervision.WaterVision;
 import me.srrapero720.watervision.WaterVisionClient;
+import me.srrapero720.watervision.client.VisionClientSettings;
 import me.srrapero720.watervision.client.render.TextureWrapper;
 import me.srrapero720.watervision.client.screens.widgets.FadeBackground;
 import net.minecraft.client.Minecraft;
@@ -12,6 +14,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraftforge.fml.loading.FMLLoader;
+import org.lwjgl.glfw.GLFW;
 import org.watermedia.api.media.MRL;
 import org.watermedia.api.media.MediaAPI;
 import org.watermedia.api.media.engines.ALEngine;
@@ -28,16 +31,20 @@ import java.util.TimeZone;
 import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "wm-kick-decode-no-reopen";
+    private static final String BUILD_TAG = "cinematic-volume-tips-skip-debug";
     private static final DateFormat FORMAT = new SimpleDateFormat("HH:mm:ss");
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
+    private static final int TIPS_AUTO_HIDE_TICKS = 200;
+    private static final int VOLUME_OVERLAY_TICKS = 60;
+    private static final int VOLUME_STEP = 5;
+    private static final int SKIP_HOLD_TICKS = 60;
 
     static {
         FORMAT.setTimeZone(TimeZone.getTimeZone("GMT-00:00"));
     }
 
     private final URI uri;
-    private final int volume;
+    private final int commandVolume;
     private final float speed;
     private final boolean stretch;
     private final boolean controls;
@@ -53,6 +60,14 @@ public class VisionScreen extends Screen {
     private boolean firstFrameDiagnosticsLogged;
     private int waitingTicks;
 
+    private boolean tipsVisible = true;
+    private int tipsTicksLeft = TIPS_AUTO_HIDE_TICKS;
+    private int volumeOverlayTicks;
+    private int clientVolume;
+    private boolean skipHolding;
+    private int skipHoldTicks;
+    private boolean skipTriggered;
+
     private Status status = Status.OPENING_GAME;
     private final FadeBackground gameBackground;
     private final FadeBackground videoBackground;
@@ -60,11 +75,12 @@ public class VisionScreen extends Screen {
     public VisionScreen(final URI uri, final int volume, final float speed, final boolean stretch, final float gameFadeDuration, final float videoFadeDuration, final boolean controls, final boolean exit) {
         super(Component.literal("WaterVision"));
         this.uri = uri;
-        this.volume = Mth.clamp(volume, 0, 100);
+        this.commandVolume = Mth.clamp(volume, 0, 100);
         this.speed = Mth.clamp(speed, 0.1f, 3f);
         this.stretch = stretch;
         this.controls = controls;
         this.exit = exit;
+        this.clientVolume = VisionClientSettings.cinematicVolume();
 
         this.gameBackground = new FadeBackground(gameFadeDuration);
         this.videoBackground = new FadeBackground(videoFadeDuration);
@@ -73,6 +89,7 @@ public class VisionScreen extends Screen {
         this.mrl = MediaAPI.getMRL(uri.toString());
         Minecraft.getInstance().getSoundManager().pause();
         WaterVision.LOGGER.info("WaterVision screen opened [{}] for {}", BUILD_TAG, this.uri);
+        WaterVision.LOGGER.info("WaterVision cinematic volume [{}]: command={} client={} effective={}", BUILD_TAG, this.commandVolume, this.clientVolume, this.effectiveVolume());
     }
 
     private void tryCreatePlayer() {
@@ -88,7 +105,7 @@ public class VisionScreen extends Screen {
             return;
         }
 
-        this.videoPlayer.volume(this.volume);
+        this.applyEffectiveVolume();
         this.videoPlayer.speed(this.speed);
         this.videoPlayer.repeat(false);
 
@@ -163,6 +180,8 @@ public class VisionScreen extends Screen {
             this.renderLoadingIndicator(guiGraphics);
         }
 
+        this.renderCinematicUi(guiGraphics);
+
         if (!FMLLoader.isProduction() && this.videoPlayer != null) {
             guiGraphics.drawString(this.font, String.format("State: %s", this.videoPlayer.status().name()), 0, (this.height / 2) - 12, 0xFFFFFF);
             guiGraphics.drawString(this.font, String.format("Time: %s (%s) / %s (%s)", FORMAT.format(new Date(this.videoPlayer.time())), this.videoPlayer.time(), FORMAT.format(new Date(this.videoPlayer.duration())), this.videoPlayer.duration()), 0, (this.height / 2), 0xFFFFFF);
@@ -189,6 +208,68 @@ public class VisionScreen extends Screen {
         }
     }
 
+    private void renderCinematicUi(final GuiGraphics graphics) {
+        final boolean renderVolume = this.volumeOverlayTicks > 0;
+        final boolean renderTips = this.tipsVisible;
+
+        int bottomOffset = 18;
+        if (renderVolume) {
+            this.renderVolumeOverlay(graphics, 16, this.height - bottomOffset - 26);
+            bottomOffset += 38;
+        }
+
+        if (renderTips) {
+            this.renderTips(graphics, 16, this.height - bottomOffset - this.tipsHeight());
+        }
+
+        if (this.exit && this.skipHolding && this.skipHoldTicks > 0 && !this.skipTriggered) {
+            this.renderSkipOverlay(graphics);
+        }
+    }
+
+    private int tipsHeight() {
+        return this.exit ? 58 : 46;
+    }
+
+    private void renderTips(final GuiGraphics graphics, final int x, final int y) {
+        final int width = 190;
+        final int height = this.tipsHeight();
+        graphics.fill(x - 6, y - 6, x + width, y + height, 0xAA000000);
+        graphics.drawString(this.font, "Tips :", x, y, 0xFFFFFF);
+        graphics.drawString(this.font, "Masquer : touche K", x, y + 12, 0xDDDDDD);
+        graphics.drawString(this.font, "Régler le volume : ↑ / ↓", x, y + 24, 0xDDDDDD);
+        if (this.exit) {
+            graphics.drawString(this.font, "Passer : maintenir Échap", x, y + 36, 0xDDDDDD);
+        }
+    }
+
+    private void renderVolumeOverlay(final GuiGraphics graphics, final int x, final int y) {
+        final int width = 150;
+        final int height = 24;
+        final int barWidth = 110;
+        final int filled = Math.round(barWidth * (this.clientVolume / 100.0f));
+
+        graphics.fill(x - 6, y - 6, x + width, y + height, 0xAA000000);
+        graphics.drawString(this.font, "Volume vidéo", x, y, 0xFFFFFF);
+        graphics.fill(x, y + 14, x + barWidth, y + 18, 0xFF555555);
+        graphics.fill(x, y + 14, x + filled, y + 18, 0xFFFFFFFF);
+        graphics.drawString(this.font, this.clientVolume + "%", x + barWidth + 8, y + 10, 0xFFFFFF);
+    }
+
+    private void renderSkipOverlay(final GuiGraphics graphics) {
+        final String text = "Passer";
+        final int boxWidth = 96;
+        final int boxHeight = 34;
+        final int x = (this.width - boxWidth) / 2;
+        final int y = this.height - 72;
+        final int progressWidth = Math.round((boxWidth - 18) * (this.skipHoldTicks / (float) SKIP_HOLD_TICKS));
+
+        graphics.fill(x, y, x + boxWidth, y + boxHeight, 0xAA000000);
+        graphics.drawString(this.font, text, x + (boxWidth - this.font.width(text)) / 2, y + 7, 0xFFFFFF);
+        graphics.fill(x + 9, y + 23, x + boxWidth - 9, y + 27, 0xFF555555);
+        graphics.fill(x + 9, y + 23, x + 9 + progressWidth, y + 27, 0xFFFFFFFF);
+    }
+
     private AspectRatioDimension render$getAspectRatio(final int screenWidth, final int screenHeight, final int videoWidth, final int videoHeight) {
         final float containerAspectRatio = (float) screenWidth / (float) screenHeight;
         final float videoAspectRatio = (float) videoWidth / (float) videoHeight;
@@ -211,6 +292,19 @@ public class VisionScreen extends Screen {
     @Override
     public void tick() {
         this.tryCreatePlayer();
+
+        if (this.tipsVisible && this.tipsTicksLeft > 0) {
+            this.tipsTicksLeft--;
+            if (this.tipsTicksLeft <= 0) {
+                this.tipsVisible = false;
+            }
+        }
+
+        if (this.volumeOverlayTicks > 0) {
+            this.volumeOverlayTicks--;
+        }
+
+        this.tickSkipHold();
 
         if (this.videoPlayer != null && !this.resumeRequested) {
             this.videoPlayer.resume();
@@ -263,6 +357,104 @@ public class VisionScreen extends Screen {
                     super.onClose();
                 }
             }
+        }
+    }
+
+    private void tickSkipHold() {
+        if (!this.exit || this.skipTriggered || this.status == Status.CLOSING_VIDEO || this.status == Status.CLOSING_GAME) {
+            this.skipHolding = false;
+            this.skipHoldTicks = 0;
+            return;
+        }
+
+        final long window = Minecraft.getInstance().getWindow().getWindow();
+        final boolean escDown = InputConstants.isKeyDown(window, GLFW.GLFW_KEY_ESCAPE);
+        if (!escDown) {
+            this.skipHolding = false;
+            this.skipHoldTicks = 0;
+            return;
+        }
+
+        this.skipHolding = true;
+        this.skipHoldTicks++;
+        if (this.skipHoldTicks >= SKIP_HOLD_TICKS) {
+            this.skipTriggered = true;
+            WaterVision.LOGGER.info("WaterVision skip hold completed [{}] for {}", BUILD_TAG, this.uri);
+            this.requestCloseVideo();
+        }
+    }
+
+    private void requestCloseVideo() {
+        if (this.videoPlayer != null && !this.videoPlayer.stopped() && !this.videoPlayer.ended() && !this.videoPlayer.error()) {
+            this.videoPlayer.stop();
+        }
+        this.status = Status.CLOSING_VIDEO;
+    }
+
+    @Override
+    public boolean keyPressed(final int keyCode, final int scanCode, final int modifiers) {
+        if (keyCode == GLFW.GLFW_KEY_K) {
+            this.toggleTips();
+            return true;
+        }
+
+        if (keyCode == GLFW.GLFW_KEY_UP) {
+            this.adjustClientVolume(VOLUME_STEP);
+            return true;
+        }
+
+        if (keyCode == GLFW.GLFW_KEY_DOWN) {
+            this.adjustClientVolume(-VOLUME_STEP);
+            return true;
+        }
+
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            if (this.exit) {
+                this.skipHolding = true;
+            }
+            return true;
+        }
+
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean keyReleased(final int keyCode, final int scanCode, final int modifiers) {
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE && !this.skipTriggered) {
+            this.skipHolding = false;
+            this.skipHoldTicks = 0;
+            return true;
+        }
+        return super.keyReleased(keyCode, scanCode, modifiers);
+    }
+
+    private void toggleTips() {
+        this.tipsVisible = !this.tipsVisible;
+        this.tipsTicksLeft = this.tipsVisible ? TIPS_AUTO_HIDE_TICKS : 0;
+        WaterVision.LOGGER.info("WaterVision tips toggled [{}]: visible={}", BUILD_TAG, this.tipsVisible);
+    }
+
+    private void adjustClientVolume(final int delta) {
+        final int newVolume = VisionClientSettings.clampVolume(this.clientVolume + delta);
+        if (newVolume == this.clientVolume) {
+            this.volumeOverlayTicks = VOLUME_OVERLAY_TICKS;
+            return;
+        }
+
+        this.clientVolume = newVolume;
+        VisionClientSettings.setCinematicVolume(this.clientVolume);
+        this.applyEffectiveVolume();
+        this.volumeOverlayTicks = VOLUME_OVERLAY_TICKS;
+        WaterVision.LOGGER.info("WaterVision cinematic volume changed [{}]: command={} client={} effective={}", BUILD_TAG, this.commandVolume, this.clientVolume, this.effectiveVolume());
+    }
+
+    private int effectiveVolume() {
+        return Mth.clamp(Math.round(this.commandVolume * (this.clientVolume / 100.0f)), 0, 100);
+    }
+
+    private void applyEffectiveVolume() {
+        if (this.videoPlayer != null) {
+            this.videoPlayer.volume(this.effectiveVolume());
         }
     }
 
@@ -445,14 +637,13 @@ public class VisionScreen extends Screen {
 
     @Override
     public boolean shouldCloseOnEsc() {
-        return this.exit;
+        return false;
     }
 
     @Override
     public void onClose() {
         if (this.status != Status.CLOSING_GAME) {
-            if (this.videoPlayer != null && !this.videoPlayer.stopped() && !this.videoPlayer.ended() && !this.videoPlayer.error()) this.videoPlayer.stop();
-            this.status = Status.CLOSING_VIDEO;
+            this.requestCloseVideo();
             return;
         }
         this.closeAndRelease();
