@@ -26,7 +26,7 @@ import java.net.URI;
 import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-volume-1s-debug";
+    private static final String BUILD_TAG = "cinematic-ui-recovery-20t-debug";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 20;
@@ -49,6 +49,7 @@ public class VisionScreen extends Screen {
     private boolean released;
     private boolean resumeRequested;
     private boolean waitLogged;
+    private boolean recoveryAttempted;
     private int waitingTicks;
     private boolean tipsVisible = true;
     private int tipsTicksLeft = TIPS_AUTO_HIDE_TICKS;
@@ -254,7 +255,7 @@ public class VisionScreen extends Screen {
 
         if (this.videoPlayer != null && !this.isVideoReady() && this.status == Status.OPENING_GAME) {
             this.waitingTicks++;
-            if (this.waitingTicks == 10 || this.waitingTicks == 20 || this.waitingTicks == 40 || this.waitingTicks == 80 || this.waitingTicks == 160) {
+            if (this.waitingTicks == 20) {
                 this.kickWaterMediaDecodeThreadsIfNeeded("waiting-" + this.waitingTicks);
             }
             if (this.waitingTicks == 100 || this.waitingTicks == 200 || this.waitingTicks == 400) {
@@ -372,18 +373,20 @@ public class VisionScreen extends Screen {
     }
 
     private void kickWaterMediaDecodeThreadsIfNeeded(final String stage) {
-        if (this.videoPlayer == null) return;
+        if (this.videoPlayer == null || this.recoveryAttempted) return;
         try {
             final Object player = this.videoPlayer;
             final boolean demuxAlive = this.isThreadAlive(this.getFieldValue(player, "demuxThread"));
             final boolean videoMissing = this.isPresent(this.getFieldValue(player, "videoCodecContext")) && !this.isThreadAlive(this.getFieldValue(player, "videoDecodeThread"));
             final boolean audioMissing = this.isPresent(this.getFieldValue(player, "audioCodecContext")) && !this.isThreadAlive(this.getFieldValue(player, "audioDecodeThread"));
             if (!demuxAlive || (!videoMissing && !audioMissing)) return;
+            this.recoveryAttempted = true;
             final Method ensureDecodeThreads = player.getClass().getDeclaredMethod("ensureDecodeThreads");
             ensureDecodeThreads.setAccessible(true);
             ensureDecodeThreads.invoke(player);
-            WaterVision.LOGGER.warn("WaterVision WM_RECOVERY [{}] stage={} invoked ensureDecodeThreads: demuxAlive={}, videoMissing={}, audioMissing={}, uri={}", BUILD_TAG, stage, demuxAlive, videoMissing, audioMissing, this.uri);
+            WaterVision.LOGGER.warn("WaterVision WM_RECOVERY [{}] stage={} invoked ensureDecodeThreads once: demuxAlive={}, videoMissing={}, audioMissing={}, uri={}", BUILD_TAG, stage, demuxAlive, videoMissing, audioMissing, this.uri);
         } catch (final Throwable throwable) {
+            this.recoveryAttempted = true;
             WaterVision.LOGGER.warn("WaterVision WM_RECOVERY [{}] stage={} failed to invoke ensureDecodeThreads", BUILD_TAG, stage, throwable);
         }
     }
