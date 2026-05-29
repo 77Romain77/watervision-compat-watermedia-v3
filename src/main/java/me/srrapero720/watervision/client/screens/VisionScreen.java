@@ -26,13 +26,14 @@ import java.net.URI;
 import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-controls-compat-debug";
+    private static final String BUILD_TAG = "cinematic-ui-controls-cooldown-debug";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 20;
     private static final int SEEK_OVERLAY_TICKS = 20;
     private static final int VOLUME_STEP = 5;
     private static final int SEEK_STEP_MS = 5000;
+    private static final int SEEK_COOLDOWN_TICKS = 5;
     private static final int SKIP_HOLD_TICKS = 40;
     private static final int MAX_PLAYER_RECREATE_ATTEMPTS = 4;
 
@@ -63,6 +64,7 @@ public class VisionScreen extends Screen {
     private int volumeOverlayTicks;
     private int seekOverlayTicks;
     private int seekOverlayDirection;
+    private int seekCooldownTicks;
     private int clientVolume;
     private boolean videoPaused;
     private boolean skipHolding;
@@ -298,6 +300,7 @@ public class VisionScreen extends Screen {
         if (this.tipsVisible && this.tipsTicksLeft > 0 && --this.tipsTicksLeft <= 0) this.tipsVisible = false;
         if (this.volumeOverlayTicks > 0) this.volumeOverlayTicks--;
         if (this.seekOverlayTicks > 0) this.seekOverlayTicks--;
+        if (this.seekCooldownTicks > 0) this.seekCooldownTicks--;
         this.tickSkipHold();
 
         if (this.videoPlayer != null && !this.resumeRequested) {
@@ -368,6 +371,7 @@ public class VisionScreen extends Screen {
         this.waitLogged = false;
         this.terminalAfterMaxLogged = false;
         this.videoPaused = false;
+        this.seekCooldownTicks = 0;
         this.waitingTicks = 0;
         return true;
     }
@@ -488,10 +492,12 @@ public class VisionScreen extends Screen {
 
     private void seekRelativeControl(final int direction) {
         if (!this.controls || this.videoPlayer == null || !this.isVideoReady() || this.status != Status.OPENING_VIDEO) return;
+        if (this.seekCooldownTicks > 0 || this.videoPlayer.ended() || this.videoPlayer.stopped() || this.videoPlayer.error()) return;
         boolean success = direction > 0
                 ? this.invokePlayerBooleanMethod("forward") || this.invokePlayerBooleanMethod("foward") || this.invokePlayerBooleanMethod("skipTime", long.class, SEEK_STEP_MS)
                 : this.invokePlayerBooleanMethod("rewind") || this.invokePlayerBooleanMethod("skipTime", long.class, -SEEK_STEP_MS);
         if (success) {
+            this.seekCooldownTicks = SEEK_COOLDOWN_TICKS;
             this.seekOverlayDirection = direction;
             this.seekOverlayTicks = SEEK_OVERLAY_TICKS;
             WaterVision.LOGGER.info("WaterVision seek control [{}]: direction={} uri={}", BUILD_TAG, direction, this.uri);
@@ -576,6 +582,7 @@ public class VisionScreen extends Screen {
             this.videoPlayer = null;
         }
         this.videoPaused = false;
+        this.seekCooldownTicks = 0;
         this.textureWrapper = null;
     }
 
