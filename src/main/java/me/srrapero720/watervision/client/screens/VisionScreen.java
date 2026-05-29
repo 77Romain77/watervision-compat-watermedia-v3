@@ -26,10 +26,11 @@ import java.net.URI;
 import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-controls-tips-debug";
+    private static final String BUILD_TAG = "cinematic-ui-controls-debug";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 20;
+    private static final int SEEK_OVERLAY_TICKS = 20;
     private static final int VOLUME_STEP = 5;
     private static final int SKIP_HOLD_TICKS = 40;
     private static final int MAX_PLAYER_RECREATE_ATTEMPTS = 4;
@@ -59,7 +60,10 @@ public class VisionScreen extends Screen {
     private boolean tipsVisible = true;
     private int tipsTicksLeft = TIPS_AUTO_HIDE_TICKS;
     private int volumeOverlayTicks;
+    private int seekOverlayTicks;
+    private int seekOverlayDirection;
     private int clientVolume;
+    private boolean videoPaused;
     private boolean skipHolding;
     private int skipHoldTicks;
     private boolean skipTriggered;
@@ -97,6 +101,7 @@ public class VisionScreen extends Screen {
         this.textureWrapper = new TextureWrapper(() -> (int) this.videoPlayer.texture());
         Minecraft.getInstance().getTextureManager().register(TEXTURE, this.textureWrapper);
         this.videoPlayer.startPaused();
+        this.videoPaused = false;
         WaterVision.LOGGER.info("WaterVision player created [{}] for {}", BUILD_TAG, this.uri);
     }
 
@@ -186,6 +191,8 @@ public class VisionScreen extends Screen {
             bottomOffset += 34;
         }
         if (this.tipsVisible) this.renderTips(graphics, 16, this.height - bottomOffset - this.tipsHeight());
+        if (this.controls && this.seekOverlayTicks > 0) this.renderSeekOverlay(graphics);
+        if (this.controls && this.videoPaused && this.status == Status.OPENING_VIDEO) this.renderPauseOverlay(graphics);
         if (this.exit && this.skipHolding && this.skipHoldTicks > 0 && !this.skipTriggered) this.renderSkipOverlay(graphics);
     }
 
@@ -232,6 +239,27 @@ public class VisionScreen extends Screen {
         graphics.drawString(this.font, this.clientVolume + "%", x + barWidth + 8, y + 9, 0xFFFFFF);
     }
 
+    private void renderSeekOverlay(final GuiGraphics graphics) {
+        final boolean forward = this.seekOverlayDirection > 0;
+        final String text = forward ? "+5s" : "-5s";
+        final int boxWidth = 52;
+        final int boxHeight = 28;
+        final int x = forward ? this.width - boxWidth - 32 : 32;
+        final int y = this.height / 2 - boxHeight / 2;
+        graphics.fill(x, y, x + boxWidth, y + boxHeight, 0xAA000000);
+        graphics.drawString(this.font, text, x + (boxWidth - this.font.width(text)) / 2, y + 10, 0xFFFFFF);
+    }
+
+    private void renderPauseOverlay(final GuiGraphics graphics) {
+        final String text = "Pause";
+        final int boxWidth = 68;
+        final int boxHeight = 24;
+        final int x = (this.width - boxWidth) / 2;
+        final int y = this.height - boxHeight - 34;
+        graphics.fill(x, y, x + boxWidth, y + boxHeight, 0xAA000000);
+        graphics.drawString(this.font, text, x + (boxWidth - this.font.width(text)) / 2, y + 8, 0xFFFFFF);
+    }
+
     private void renderSkipOverlay(final GuiGraphics graphics) {
         final String text = "Passer";
         final int boxWidth = 78;
@@ -268,6 +296,7 @@ public class VisionScreen extends Screen {
         this.tryCreatePlayer();
         if (this.tipsVisible && this.tipsTicksLeft > 0 && --this.tipsTicksLeft <= 0) this.tipsVisible = false;
         if (this.volumeOverlayTicks > 0) this.volumeOverlayTicks--;
+        if (this.seekOverlayTicks > 0) this.seekOverlayTicks--;
         this.tickSkipHold();
 
         if (this.videoPlayer != null && !this.resumeRequested) {
@@ -337,6 +366,7 @@ public class VisionScreen extends Screen {
         this.recoveryAttempted = false;
         this.waitLogged = false;
         this.terminalAfterMaxLogged = false;
+        this.videoPaused = false;
         this.waitingTicks = 0;
         return true;
     }
@@ -371,6 +401,7 @@ public class VisionScreen extends Screen {
 
     private void requestCloseVideo() {
         if (this.videoPlayer != null && !this.videoPlayer.stopped() && !this.videoPlayer.ended() && !this.videoPlayer.error()) this.videoPlayer.stop();
+        this.videoPaused = false;
         this.status = Status.CLOSING_VIDEO;
     }
 
@@ -386,6 +417,18 @@ public class VisionScreen extends Screen {
         }
         if (keyCode == GLFW.GLFW_KEY_DOWN) {
             this.adjustClientVolume(-VOLUME_STEP);
+            return true;
+        }
+        if (this.controls && keyCode == GLFW.GLFW_KEY_SPACE) {
+            this.togglePlaybackControl();
+            return true;
+        }
+        if (this.controls && keyCode == GLFW.GLFW_KEY_RIGHT) {
+            this.seekRelativeControl(1);
+            return true;
+        }
+        if (this.controls && keyCode == GLFW.GLFW_KEY_LEFT) {
+            this.seekRelativeControl(-1);
             return true;
         }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
@@ -420,6 +463,30 @@ public class VisionScreen extends Screen {
             WaterVision.LOGGER.info("WaterVision cinematic volume changed [{}]: command={} client={} effective={}", BUILD_TAG, this.commandVolume, this.clientVolume, this.effectiveVolume());
         }
         this.volumeOverlayTicks = VOLUME_OVERLAY_TICKS;
+    }
+
+    private void togglePlaybackControl() {
+        if (!this.controls || this.videoPlayer == null || !this.isVideoReady() || this.status != Status.OPENING_VIDEO) return;
+        final boolean shouldPause = !this.videoPlayer.paused();
+        final boolean success = shouldPause ? this.videoPlayer.pause() : this.videoPlayer.resume();
+        if (success) {
+            this.videoPaused = shouldPause;
+            WaterVision.LOGGER.info("WaterVision playback control [{}]: paused={} uri={}", BUILD_TAG, this.videoPaused, this.uri);
+        } else {
+            WaterVision.LOGGER.warn("WaterVision playback control [{}] failed: paused={} uri={}", BUILD_TAG, shouldPause, this.uri);
+        }
+    }
+
+    private void seekRelativeControl(final int direction) {
+        if (!this.controls || this.videoPlayer == null || !this.isVideoReady() || this.status != Status.OPENING_VIDEO) return;
+        final boolean success = direction > 0 ? this.videoPlayer.forward() : this.videoPlayer.rewind();
+        if (success) {
+            this.seekOverlayDirection = direction;
+            this.seekOverlayTicks = SEEK_OVERLAY_TICKS;
+            WaterVision.LOGGER.info("WaterVision seek control [{}]: direction={} uri={}", BUILD_TAG, direction, this.uri);
+        } else {
+            WaterVision.LOGGER.warn("WaterVision seek control [{}] failed: direction={} uri={}", BUILD_TAG, direction, this.uri);
+        }
     }
 
     private int effectiveVolume() {
@@ -479,6 +546,7 @@ public class VisionScreen extends Screen {
             this.videoPlayer.release();
             this.videoPlayer = null;
         }
+        this.videoPaused = false;
         this.textureWrapper = null;
     }
 
