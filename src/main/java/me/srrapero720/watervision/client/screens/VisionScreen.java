@@ -26,7 +26,7 @@ import java.net.URI;
 import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-ended-recreate-debug";
+    private static final String BUILD_TAG = "cinematic-ui-ended-recreate-2x-debug";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 20;
@@ -38,7 +38,7 @@ public class VisionScreen extends Screen {
     private final float speed;
     private final boolean stretch;
     private final boolean exit;
-    private final MRL mrl;
+    private MRL mrl;
     private final FadeBackground gameBackground;
     private final FadeBackground videoBackground;
 
@@ -50,7 +50,7 @@ public class VisionScreen extends Screen {
     private boolean resumeRequested;
     private boolean waitLogged;
     private boolean recoveryAttempted;
-    private boolean playerRecreateAttempted;
+    private int playerRecreateAttempts;
     private boolean firstTextureRenderLogged;
     private int waitingTicks;
     private boolean tipsVisible = true;
@@ -308,12 +308,13 @@ public class VisionScreen extends Screen {
     }
 
     private void recreatePlayerOnce(final String reason) {
-        if (this.playerRecreateAttempted || this.videoPlayer == null) return;
-        this.playerRecreateAttempted = true;
-        WaterVision.LOGGER.warn("WaterVision recreating player once [{}]: reason={}, wmStatus={}, texture={}, size={}x{}, uri={}",
-                BUILD_TAG, reason, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
+        if (this.playerRecreateAttempts >= 2 || this.videoPlayer == null) return;
+        this.playerRecreateAttempts++;
+        WaterVision.LOGGER.warn("WaterVision recreating player [{}]: attempt={}/2, reason={}, wmStatus={}, texture={}, size={}x{}, uri={}",
+                BUILD_TAG, this.playerRecreateAttempts, reason, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
         this.releasePlayerOnly();
         this.videoPlayer = null;
+        this.mrl = MediaAPI.getMRL(this.uri.toString());
         this.resumeRequested = false;
         this.recoveryAttempted = false;
         this.waitLogged = false;
