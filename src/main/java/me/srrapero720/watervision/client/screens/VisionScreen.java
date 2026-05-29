@@ -26,7 +26,7 @@ import java.net.URI;
 import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-early-recovery-10t-debug2";
+    private static final String BUILD_TAG = "cinematic-ui-controls-tips-debug";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 20;
@@ -38,6 +38,7 @@ public class VisionScreen extends Screen {
     private final int commandVolume;
     private final float speed;
     private final boolean stretch;
+    private final boolean controls;
     private final boolean exit;
     private MRL mrl;
     private final FadeBackground gameBackground;
@@ -69,6 +70,7 @@ public class VisionScreen extends Screen {
         this.commandVolume = Mth.clamp(volume, 0, 100);
         this.speed = Mth.clamp(speed, 0.1f, 3f);
         this.stretch = stretch;
+        this.controls = controls;
         this.exit = exit;
         this.clientVolume = VisionClientSettings.cinematicVolume();
         this.gameBackground = new FadeBackground(gameFadeDuration);
@@ -77,7 +79,7 @@ public class VisionScreen extends Screen {
         this.mrl = MediaAPI.getMRL(uri.toString());
         Minecraft.getInstance().getSoundManager().pause();
         WaterVision.LOGGER.info("WaterVision screen opened [{}] for {}", BUILD_TAG, this.uri);
-        WaterVision.LOGGER.info("WaterVision cinematic volume [{}]: command={} client={} effective={}", BUILD_TAG, this.commandVolume, this.clientVolume, this.effectiveVolume());
+        WaterVision.LOGGER.info("WaterVision cinematic volume [{}]: command={} client={} effective={} controls={} exit={}", BUILD_TAG, this.commandVolume, this.clientVolume, this.effectiveVolume(), this.controls, this.exit);
     }
 
     private void tryCreatePlayer() {
@@ -188,22 +190,34 @@ public class VisionScreen extends Screen {
     }
 
     private int tipsHeight() {
-        return this.exit ? 48 : 36;
+        return this.tipsLineCount() * 11 + 4;
+    }
+
+    private int tipsLineCount() {
+        int lines = 3;
+        if (this.controls) lines += 2;
+        if (this.exit) lines++;
+        return lines;
     }
 
     private void renderTips(final GuiGraphics graphics, final int x, final int y) {
-        final String title = "Tips :";
-        final String mask = "Masquer : touche K";
-        final String volume = "Régler le volume : ↑ / ↓";
-        final String skip = "Passer : maintenir Échap";
-        final int maxTextWidth = Math.max(Math.max(this.font.width(title), this.font.width(mask)), Math.max(this.font.width(volume), this.exit ? this.font.width(skip) : 0));
+        final String[] lines = new String[6];
+        int count = 0;
+        lines[count++] = "Tips :";
+        lines[count++] = "Masquer : touche K";
+        lines[count++] = "Régler le volume : ↑ / ↓";
+        if (this.controls) {
+            lines[count++] = "Pause : Espace";
+            lines[count++] = "Avancer / reculer : ← / →";
+        }
+        if (this.exit) lines[count++] = "Passer : maintenir Échap";
+
+        int maxTextWidth = 0;
+        for (int i = 0; i < count; i++) maxTextWidth = Math.max(maxTextWidth, this.font.width(lines[i]));
         final int width = Math.max(80, maxTextWidth + 10);
         final int height = this.tipsHeight();
         graphics.fill(x - 5, y - 5, x + width, y + height, 0xAA000000);
-        graphics.drawString(this.font, title, x, y, 0xFFFFFF);
-        graphics.drawString(this.font, mask, x, y + 11, 0xDDDDDD);
-        graphics.drawString(this.font, volume, x, y + 22, 0xDDDDDD);
-        if (this.exit) graphics.drawString(this.font, skip, x, y + 33, 0xDDDDDD);
+        for (int i = 0; i < count; i++) graphics.drawString(this.font, lines[i], x, y + i * 11, i == 0 ? 0xFFFFFF : 0xDDDDDD);
     }
 
     private void renderVolumeOverlay(final GuiGraphics graphics, final int x, final int y) {
