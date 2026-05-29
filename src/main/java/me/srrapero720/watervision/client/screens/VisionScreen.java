@@ -26,7 +26,7 @@ import java.net.URI;
 import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-cachebust-retry-debug";
+    private static final String BUILD_TAG = "cinematic-ui-terminal-kick-debug";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 20;
@@ -264,12 +264,12 @@ public class VisionScreen extends Screen {
 
         if (this.videoPlayer != null && !this.isVideoReady() && this.status == Status.OPENING_GAME) {
             this.waitingTicks++;
-            if (this.waitingTicks >= 20 && this.isTerminalBeforeFirstTexture()) {
-                if (this.recreatePlayerOnce("terminal-before-first-texture")) return;
-                this.logTerminalAfterMaxRecreates();
-            }
             if (this.waitingTicks == 20) {
                 this.kickWaterMediaDecodeThreadsIfNeeded("waiting-" + this.waitingTicks);
+            }
+            if (this.waitingTicks >= 40 && this.isTerminalBeforeFirstTexture()) {
+                if (this.recreatePlayerOnce("terminal-before-first-texture")) return;
+                this.logTerminalAfterMaxRecreates();
             }
             if (this.waitingTicks == 100 || this.waitingTicks == 200 || this.waitingTicks == 400) {
                 WaterVision.LOGGER.warn("WaterVision waiting for first video frame [{}]: status={}, texture={}, size={}x{}, uri={}", BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
@@ -420,7 +420,7 @@ public class VisionScreen extends Screen {
         if (this.videoPlayer == null || this.recoveryAttempted) return;
         try {
             final Object player = this.videoPlayer;
-            final boolean demuxAlive = this.isThreadAlive(this.getFieldValue(player, "demuxThread"));
+            final boolean demuxAlive = this.isThreadAlive(this.getFieldValue(player, "demuxThread")) || this.isTerminalBeforeFirstTexture();
             final boolean videoMissing = this.isPresent(this.getFieldValue(player, "videoCodecContext")) && !this.isThreadAlive(this.getFieldValue(player, "videoDecodeThread"));
             final boolean audioMissing = this.isPresent(this.getFieldValue(player, "audioCodecContext")) && !this.isThreadAlive(this.getFieldValue(player, "audioDecodeThread"));
             if (!demuxAlive || (!videoMissing && !audioMissing)) return;
