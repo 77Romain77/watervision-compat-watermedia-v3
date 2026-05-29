@@ -26,7 +26,7 @@ import java.net.URI;
 import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-recovery-20t-debug";
+    private static final String BUILD_TAG = "cinematic-ui-render-logs-debug";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 20;
@@ -50,6 +50,7 @@ public class VisionScreen extends Screen {
     private boolean resumeRequested;
     private boolean waitLogged;
     private boolean recoveryAttempted;
+    private boolean firstTextureRenderLogged;
     private int waitingTicks;
     private boolean tipsVisible = true;
     private int tipsTicksLeft = TIPS_AUTO_HIDE_TICKS;
@@ -143,6 +144,11 @@ public class VisionScreen extends Screen {
             } else {
                 final AspectRatioDimension dim = this.render$getAspectRatio(this.width, this.height, this.videoPlayer.width(), this.videoPlayer.height());
                 WaterVisionClient.internal$blit(graphics, TEXTURE, 1, dim.x, dim.y, 0, 0, dim.width, dim.height);
+            }
+            if (!this.firstTextureRenderLogged) {
+                this.firstTextureRenderLogged = true;
+                WaterVision.LOGGER.info("WaterVision first video texture rendered [{}]: wmStatus={}, texture={}, size={}x{}, orchestrator={}, uri={}",
+                        BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.status, this.uri);
             }
         }
         if (this.status != Status.OPENING_GAME && this.status != Status.CLOSING_GAME) {
@@ -270,6 +276,8 @@ public class VisionScreen extends Screen {
         switch (this.status) {
             case OPENING_GAME -> {
                 if (this.gameBackground.isFadedIn() && this.isVideoReady()) {
+                    WaterVision.LOGGER.info("WaterVision transition OPENING_GAME -> OPENING_VIDEO [{}]: wmStatus={}, texture={}, size={}x{}, uri={}",
+                            BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
                     this.status = Status.OPENING_VIDEO;
                     this.waitingTicks = 0;
                     WaterVision.LOGGER.info("WaterVision first frame ready [{}] for {}", BUILD_TAG, this.uri);
