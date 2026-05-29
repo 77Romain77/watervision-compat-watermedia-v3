@@ -26,7 +26,7 @@ import java.net.URI;
 import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-terminal-kick-debug";
+    private static final String BUILD_TAG = "cinematic-ui-early-recovery-10t-debug";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 20;
@@ -264,7 +264,7 @@ public class VisionScreen extends Screen {
 
         if (this.videoPlayer != null && !this.isVideoReady() && this.status == Status.OPENING_GAME) {
             this.waitingTicks++;
-            if (this.waitingTicks == 20) {
+            if (this.waitingTicks == 10) {
                 this.kickWaterMediaDecodeThreadsIfNeeded("waiting-" + this.waitingTicks);
             }
             if (this.waitingTicks >= 40 && this.isTerminalBeforeFirstTexture()) {
