@@ -26,12 +26,13 @@ import java.net.URI;
 import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-controls-debug";
+    private static final String BUILD_TAG = "cinematic-ui-controls-compat-debug";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 20;
     private static final int SEEK_OVERLAY_TICKS = 20;
     private static final int VOLUME_STEP = 5;
+    private static final int SEEK_STEP_MS = 5000;
     private static final int SKIP_HOLD_TICKS = 40;
     private static final int MAX_PLAYER_RECREATE_ATTEMPTS = 4;
 
@@ -467,7 +468,7 @@ public class VisionScreen extends Screen {
 
     private void togglePlaybackControl() {
         if (!this.controls || this.videoPlayer == null || !this.isVideoReady() || this.status != Status.OPENING_VIDEO) return;
-        final boolean shouldPause = !this.videoPlayer.paused();
+        final boolean shouldPause = !this.isPlayerPausedCompat();
         final boolean success = shouldPause ? this.videoPlayer.pause() : this.videoPlayer.resume();
         if (success) {
             this.videoPaused = shouldPause;
@@ -477,15 +478,43 @@ public class VisionScreen extends Screen {
         }
     }
 
+    private boolean isPlayerPausedCompat() {
+        try {
+            return this.videoPlayer != null && "PAUSED".equals(this.videoPlayer.status().name());
+        } catch (final Throwable ignored) {
+            return this.videoPaused;
+        }
+    }
+
     private void seekRelativeControl(final int direction) {
         if (!this.controls || this.videoPlayer == null || !this.isVideoReady() || this.status != Status.OPENING_VIDEO) return;
-        final boolean success = direction > 0 ? this.videoPlayer.forward() : this.videoPlayer.rewind();
+        boolean success = direction > 0
+                ? this.invokePlayerBooleanMethod("forward") || this.invokePlayerBooleanMethod("foward") || this.invokePlayerBooleanMethod("skipTime", long.class, SEEK_STEP_MS)
+                : this.invokePlayerBooleanMethod("rewind") || this.invokePlayerBooleanMethod("skipTime", long.class, -SEEK_STEP_MS);
         if (success) {
             this.seekOverlayDirection = direction;
             this.seekOverlayTicks = SEEK_OVERLAY_TICKS;
             WaterVision.LOGGER.info("WaterVision seek control [{}]: direction={} uri={}", BUILD_TAG, direction, this.uri);
         } else {
             WaterVision.LOGGER.warn("WaterVision seek control [{}] failed: direction={} uri={}", BUILD_TAG, direction, this.uri);
+        }
+    }
+
+    private boolean invokePlayerBooleanMethod(final String name, final Object... args) {
+        if (this.videoPlayer == null) return false;
+        final Class<?>[] parameterTypes = new Class<?>[args.length / 2];
+        final Object[] values = new Object[args.length / 2];
+        for (int i = 0; i < args.length; i += 2) {
+            parameterTypes[i / 2] = (Class<?>) args[i];
+            values[i / 2] = args[i + 1];
+        }
+        try {
+            final Method method = this.videoPlayer.getClass().getMethod(name, parameterTypes);
+            method.setAccessible(true);
+            final Object result = method.invoke(this.videoPlayer, values);
+            return !(result instanceof Boolean) || (Boolean) result;
+        } catch (final Throwable ignored) {
+            return false;
         }
     }
 
