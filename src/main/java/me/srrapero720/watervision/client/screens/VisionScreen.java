@@ -26,7 +26,7 @@ import java.net.URI;
 import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-render-logs-debug";
+    private static final String BUILD_TAG = "cinematic-ui-ended-recreate-debug";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 20;
@@ -50,6 +50,7 @@ public class VisionScreen extends Screen {
     private boolean resumeRequested;
     private boolean waitLogged;
     private boolean recoveryAttempted;
+    private boolean playerRecreateAttempted;
     private boolean firstTextureRenderLogged;
     private int waitingTicks;
     private boolean tipsVisible = true;
@@ -261,6 +262,10 @@ public class VisionScreen extends Screen {
 
         if (this.videoPlayer != null && !this.isVideoReady() && this.status == Status.OPENING_GAME) {
             this.waitingTicks++;
+            if (this.waitingTicks >= 20 && this.isTerminalBeforeFirstTexture()) {
+                this.recreatePlayerOnce("terminal-before-first-texture");
+                return;
+            }
             if (this.waitingTicks == 20) {
                 this.kickWaterMediaDecodeThreadsIfNeeded("waiting-" + this.waitingTicks);
             }
@@ -296,6 +301,23 @@ public class VisionScreen extends Screen {
                 }
             }
         }
+    }
+
+    private boolean isTerminalBeforeFirstTexture() {
+        return this.videoPlayer != null && !this.firstTextureRenderLogged && this.videoPlayer.texture() == 0 && (this.videoPlayer.ended() || this.videoPlayer.stopped() || this.videoPlayer.error());
+    }
+
+    private void recreatePlayerOnce(final String reason) {
+        if (this.playerRecreateAttempted || this.videoPlayer == null) return;
+        this.playerRecreateAttempted = true;
+        WaterVision.LOGGER.warn("WaterVision recreating player once [{}]: reason={}, wmStatus={}, texture={}, size={}x{}, uri={}",
+                BUILD_TAG, reason, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
+        this.releasePlayerOnly();
+        this.videoPlayer = null;
+        this.resumeRequested = false;
+        this.recoveryAttempted = false;
+        this.waitLogged = false;
+        this.waitingTicks = 0;
     }
 
     private void tickSkipHold() {
