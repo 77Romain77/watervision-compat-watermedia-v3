@@ -16,7 +16,7 @@ issueTrackerURL="https://github.com/${github}/issues" #optional
     modId="watermedia"
     mandatory=true
     versionRange="${watermediarange}"
-    ordering="BEFORE"
+    ordering="AFTER"
     side="CLIENT"
 [[dependencies.${modid}]] #optional
    # the modid of the dependency

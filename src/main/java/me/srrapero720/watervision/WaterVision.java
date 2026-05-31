@@ -1,6 +1,5 @@
 package me.srrapero720.watervision;
 
-import me.srrapero720.watervision.client.render.TextureWrapper;
 import me.srrapero720.watervision.common.commands.VisionCommands;
 import me.srrapero720.watervision.common.network.VisionNetwork;
 import net.minecraft.client.Minecraft;
@@ -18,7 +17,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.MarkerManager;
-import org.watermedia.api.image.ImageAPI;
 
 @Mod(WaterVision.ID)
 @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.FORGE)
@@ -62,9 +60,6 @@ public class WaterVision {
         @OnlyIn(Dist.CLIENT)
         public static void clientSetup(final FMLClientSetupEvent event) {
             LOGGER.debug("Client setup...");
-            event.enqueueWork(() -> {
-                Minecraft.getInstance().getTextureManager().register(LOADING_ANIM_TEXTURE, new TextureWrapper.Renderer(ImageAPI.loadingGif("watervision")));
-            });
         }
     }
 
