@@ -26,7 +26,7 @@ import java.net.URI;
 import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-controls-cooldown-debug";
+    private static final String BUILD_TAG = "cinematic-ui-watermedia-017-debug";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 20;
@@ -34,6 +34,8 @@ public class VisionScreen extends Screen {
     private static final int VOLUME_STEP = 5;
     private static final int SEEK_STEP_MS = 5000;
     private static final int SEEK_COOLDOWN_TICKS = 5;
+    private static final int RESUME_DELAY_TICKS = 3;
+    private static final int EARLY_RECOVERY_UNTIL_TICK = 10;
     private static final int SKIP_HOLD_TICKS = 40;
     private static final int MAX_PLAYER_RECREATE_ATTEMPTS = 4;
 
@@ -53,6 +55,7 @@ public class VisionScreen extends Screen {
     private boolean failedToCreatePlayer;
     private boolean released;
     private boolean resumeRequested;
+    private int resumeDelayTicks;
     private boolean waitLogged;
     private boolean terminalAfterMaxLogged;
     private boolean recoveryAttempted;
@@ -91,6 +94,12 @@ public class VisionScreen extends Screen {
 
     private void tryCreatePlayer() {
         if (this.released || this.videoPlayer != null || this.failedToCreatePlayer || !this.mrl.ready()) return;
+        if (this.mrlHasErrorCompat()) {
+            this.failedToCreatePlayer = true;
+            WaterVision.LOGGER.error("WaterMedia MRL failed before player creation [{}]: exception={}, uri={}", BUILD_TAG, this.mrlExceptionCompat(), this.uri);
+            this.status = Status.CLOSING_VIDEO;
+            return;
+        }
         this.videoPlayer = this.createCompatiblePlayer();
         if (this.videoPlayer == null) {
             this.failedToCreatePlayer = true;
@@ -105,7 +114,27 @@ public class VisionScreen extends Screen {
         Minecraft.getInstance().getTextureManager().register(TEXTURE, this.textureWrapper);
         this.videoPlayer.startPaused();
         this.videoPaused = false;
+        this.resumeDelayTicks = 0;
         WaterVision.LOGGER.info("WaterVision player created [{}] for {}", BUILD_TAG, this.uri);
+    }
+
+    private boolean mrlHasErrorCompat() {
+        try {
+            final Method method = this.mrl.getClass().getMethod("hasError");
+            final Object result = method.invoke(this.mrl);
+            return result instanceof Boolean && (Boolean) result;
+        } catch (final Throwable ignored) {
+            return false;
+        }
+    }
+
+    private Object mrlExceptionCompat() {
+        try {
+            final Method method = this.mrl.getClass().getMethod("exception");
+            return method.invoke(this.mrl);
+        } catch (final Throwable ignored) {
+            return null;
+        }
     }
 
     private MediaPlayer createCompatiblePlayer() {
@@ -303,27 +332,32 @@ public class VisionScreen extends Screen {
         if (this.seekCooldownTicks > 0) this.seekCooldownTicks--;
         this.tickSkipHold();
 
-        if (this.videoPlayer != null && !this.resumeRequested) {
-            this.videoPlayer.resume();
-            this.resumeRequested = true;
-            WaterVision.LOGGER.info("WaterVision player resume requested [{}] for {}", BUILD_TAG, this.uri);
-        }
-
         if (this.videoPlayer != null && !this.isVideoReady() && this.status == Status.OPENING_GAME) {
             this.waitingTicks++;
-            if (this.waitingTicks == 10) {
-                this.kickWaterMediaDecodeThreadsIfNeeded("waiting-" + this.waitingTicks);
+            if (this.waitingTicks <= EARLY_RECOVERY_UNTIL_TICK) {
+                this.kickWaterMediaDecodeThreadsIfNeeded("early-waiting-" + this.waitingTicks);
             }
             if (this.waitingTicks >= 40 && this.isTerminalBeforeFirstTexture()) {
                 if (this.recreatePlayerOnce("terminal-before-first-texture")) return;
                 this.logTerminalAfterMaxRecreates();
             }
-            if (this.waitingTicks == 100 || this.waitingTicks == 200 || this.waitingTicks == 400) {
+            if (this.waitingTicks == 20 || this.waitingTicks == 100 || this.waitingTicks == 200 || this.waitingTicks == 400) {
                 WaterVision.LOGGER.warn("WaterVision waiting for first video frame [{}]: status={}, texture={}, size={}x{}, uri={}", BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
             }
             if (this.waitingTicks >= 400 && !this.waitLogged) {
                 this.waitLogged = true;
                 WaterVision.LOGGER.error("WaterVision first frame still missing [{}]: status={}, texture={}, size={}x{}, uri={}", BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
+            }
+        }
+
+        if (this.videoPlayer != null && !this.resumeRequested) {
+            if (this.resumeDelayTicks < RESUME_DELAY_TICKS) {
+                this.resumeDelayTicks++;
+                if (this.resumeDelayTicks == 1) WaterVision.LOGGER.info("WaterVision delayed resume armed [{}]: delayTicks={}, uri={}", BUILD_TAG, RESUME_DELAY_TICKS, this.uri);
+            } else {
+                this.videoPlayer.resume();
+                this.resumeRequested = true;
+                WaterVision.LOGGER.info("WaterVision player resume requested [{}] after {} ticks for {}", BUILD_TAG, this.resumeDelayTicks, this.uri);
             }
         }
 
@@ -367,6 +401,7 @@ public class VisionScreen extends Screen {
         final String retryUrl = base + (base.contains("?") ? "&" : "?") + "wvRetry=" + this.playerRecreateAttempts + "&wvTime=" + System.nanoTime();
         this.mrl = MediaAPI.getMRL(retryUrl);
         this.resumeRequested = false;
+        this.resumeDelayTicks = 0;
         this.recoveryAttempted = false;
         this.waitLogged = false;
         this.terminalAfterMaxLogged = false;
@@ -536,15 +571,16 @@ public class VisionScreen extends Screen {
         if (this.videoPlayer == null || this.recoveryAttempted) return;
         try {
             final Object player = this.videoPlayer;
-            final boolean demuxAlive = this.isThreadAlive(this.getFieldValue(player, "demuxThread")) || this.isTerminalBeforeFirstTexture();
+            final boolean lifecycleAlive = this.isThreadAlive(this.getFieldValue(player, "lifecycleThread"));
+            final boolean demuxAlive = this.isThreadAlive(this.getFieldValue(player, "demuxThread"));
             final boolean videoMissing = this.isPresent(this.getFieldValue(player, "videoCodecContext")) && !this.isThreadAlive(this.getFieldValue(player, "videoDecodeThread"));
             final boolean audioMissing = this.isPresent(this.getFieldValue(player, "audioCodecContext")) && !this.isThreadAlive(this.getFieldValue(player, "audioDecodeThread"));
-            if (!demuxAlive || (!videoMissing && !audioMissing)) return;
+            if ((!lifecycleAlive && !demuxAlive) || (!videoMissing && !audioMissing)) return;
             this.recoveryAttempted = true;
             final Method ensureDecodeThreads = player.getClass().getDeclaredMethod("ensureDecodeThreads");
             ensureDecodeThreads.setAccessible(true);
             ensureDecodeThreads.invoke(player);
-            WaterVision.LOGGER.warn("WaterVision WM_RECOVERY [{}] stage={} invoked ensureDecodeThreads once: demuxAlive={}, videoMissing={}, audioMissing={}, uri={}", BUILD_TAG, stage, demuxAlive, videoMissing, audioMissing, this.uri);
+            WaterVision.LOGGER.warn("WaterVision WM_RECOVERY [{}] stage={} invoked ensureDecodeThreads once: lifecycleAlive={}, demuxAlive={}, videoMissing={}, audioMissing={}, uri={}", BUILD_TAG, stage, lifecycleAlive, demuxAlive, videoMissing, audioMissing, this.uri);
         } catch (final Throwable throwable) {
             this.recoveryAttempted = true;
             WaterVision.LOGGER.warn("WaterVision WM_RECOVERY [{}] stage={} failed to invoke ensureDecodeThreads", BUILD_TAG, stage, throwable);
