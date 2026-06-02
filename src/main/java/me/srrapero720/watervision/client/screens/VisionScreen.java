@@ -26,7 +26,7 @@ import java.net.URI;
 import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-watermedia-017-safe-debug";
+    private static final String BUILD_TAG = "cinematic-ui-watermedia-017-delay20-debug";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 20;
@@ -34,7 +34,7 @@ public class VisionScreen extends Screen {
     private static final int VOLUME_STEP = 5;
     private static final int SEEK_STEP_MS = 5000;
     private static final int SEEK_COOLDOWN_TICKS = 5;
-    private static final int RESUME_DELAY_TICKS = 3;
+    private static final int RESUME_DELAY_TICKS = 20;
     private static final int LATE_RECOVERY_TICK = 40;
     private static final int SKIP_HOLD_TICKS = 40;
     private static final int MAX_PLAYER_RECREATE_ATTEMPTS = 4;
