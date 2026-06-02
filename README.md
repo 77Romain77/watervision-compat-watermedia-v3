@@ -1,47 +1,74 @@
-# WaterVision — WaterMedia V3 compatibility branch
+# WaterVision — WaterMedia 3.0.0.17 compatibility branch
 
 WaterVision is a Minecraft mod used to play fullscreen cinematic videos in-game through commands.
 
-This branch updates the mod to work with **WaterMedia V3** and adds several cinematic quality-of-life features for players, especially for servers that use videos as cutscenes.
+This branch updates the cinematic screen for **WaterMedia 3.0.0.17** and keeps the quality-of-life features added for server cutscenes: client-side volume control, cinematic tips, hold-to-skip, pause/resume, and seek controls.
 
 This project is not affiliated with Mr.Puzzle or PuzzleVision.
 
+## Branch status
+
+This branch is intended for:
+
+```text
+Minecraft Forge 1.20.1
+WaterMedia 3.0.0.17
+wm_binaries 3.0.0-rc.1
+```
+
+It was created separately from the `watermedia-v3-compat` branch so the previous working WaterMedia `3.0.0.16` version stays untouched.
+
+Expected debug tag in logs:
+
+```text
+[cinematic-ui-watermedia-017-debug]
+```
+
 ## What changed in this branch
 
-### WaterMedia V3 compatibility
+### WaterMedia 3.0.0.17 startup adaptation
 
-This branch ports the video screen to the WaterMedia V3 API:
+WaterMedia `3.0.0.17` changed the player startup behavior. In some cases, the player could read the video, reach EOF, and finish without rendering the first frame, leaving WaterVision stuck with `texture=0`.
 
-- Uses the WaterMedia V3 player creation flow.
-- Creates compatible video and audio engines for fullscreen playback.
-- Keeps support for Forge 1.20.1.
-- Tested with WaterMedia `3.0.0.16` on Forge `1.20.1`.
+This branch adapts the cinematic startup flow:
 
-### WaterMedia 3.0.0.17 experimental branch
+- Uses the WaterMedia V3 `MediaAPI.createPlayer(...)` compatibility path.
+- Keeps the player in `startPaused()` when it is created.
+- Delays the first `resume()` by **3 ticks**.
+- Checks `MRL.hasError()` / `MRL.exception()` before creating the player when available.
+- Attempts early decode-thread recovery during the first **10 ticks** if no texture is available yet.
+- Recovery now also checks the WaterMedia `lifecycleThread`, not only the demux thread.
+- Keeps the retry system for terminal players that end before rendering a first texture.
+- Adds detailed startup logs to diagnose first-frame issues.
 
-The `watermedia-3.0.0.17-compat` branch contains experimental startup adjustments for WaterMedia `3.0.0.17`.
+In successful logs, you should see:
 
-### More reliable video startup
+```text
+WaterVision delayed resume armed [cinematic-ui-watermedia-017-debug]
+WaterVision player resume requested [cinematic-ui-watermedia-017-debug] after 3 ticks
+WaterVision first frame ready [cinematic-ui-watermedia-017-debug]
+WaterVision first video texture rendered [cinematic-ui-watermedia-017-debug]
+```
 
-Some WaterMedia V3 players could start, read the video, but never render the first frame. In logs, this usually appeared as a player ending with `texture=0` before any frame was rendered.
+### First-frame recovery
 
-This branch adds recovery logic to make cinematic startup more reliable:
+If the first frame does not arrive quickly enough, WaterVision can attempt a guarded WaterMedia recovery:
 
-- Detects when the first video texture is missing.
-- Triggers a guarded WaterMedia decode-thread recovery after 10 ticks when needed.
-- Retries player creation only if the player reaches a terminal state before rendering the first frame.
-- Adds cache-busting retry URLs for recreated players.
-- Adds detailed debug logs to make video startup issues easier to diagnose.
+```text
+WaterVision WM_RECOVERY [cinematic-ui-watermedia-017-debug] stage=early-waiting-X invoked ensureDecodeThreads once
+```
+
+This is not necessarily an error. If `first frame ready` appears after it, the recovery worked correctly.
 
 ### Cinematic volume control
 
-Players can now adjust the video volume during a cinematic:
+Players can adjust the video volume during a cinematic:
 
 - `Arrow Up`: increase cinematic volume.
 - `Arrow Down`: decrease cinematic volume.
-- The volume overlay appears briefly when the value changes.
+- A small volume overlay appears briefly when the value changes.
 - The player volume is saved client-side and reused for later cinematics.
-- The command volume still acts as the base/max volume chosen by the server.
+- The command volume remains the server-side base volume.
 
 Effective volume is calculated like this:
 
@@ -53,7 +80,7 @@ Example: if the command sends volume `80` and the player volume is `50%`, the ef
 
 ### Optional playback controls
 
-The `allow_controls` argument is now used.
+The `allow_controls` command argument is now used.
 
 When `allow_controls = true`, players can control the cinematic:
 
@@ -67,13 +94,13 @@ Visual overlays were added:
 - `+5s` appears on the right side when seeking forward.
 - `-5s` appears on the left side when seeking backward.
 
-A 5-tick seek cooldown is applied to avoid spamming WaterMedia with too many seek requests too quickly.
+A **5-tick seek cooldown** is applied to avoid sending too many seek requests to WaterMedia too quickly.
 
 When `allow_controls = false`, pause and seek inputs are ignored and the related tips are hidden.
 
 ### Safer skip behavior
 
-The `allow_exit` argument controls whether the player can skip the video.
+The `allow_exit` command argument controls whether the player can skip the video.
 
 When `allow_exit = true`:
 
@@ -194,16 +221,18 @@ Note: customizing the default WaterMedia loading animation affects all mods usin
 
 ## Debugging
 
-This branch logs the active build tag when a cinematic starts. For the current control/cooldown implementation, the expected tag is:
+This branch logs the active build tag when a cinematic starts:
 
 ```text
-[cinematic-ui-controls-cooldown-debug]
+[cinematic-ui-watermedia-017-debug]
 ```
 
 Useful WaterVision log entries include:
 
 - `screen opened`
 - `player created`
+- `delayed resume armed`
+- `player resume requested`
 - `WM_RECOVERY`
 - `first frame ready`
 - `first video texture rendered`
@@ -212,6 +241,17 @@ Useful WaterVision log entries include:
 - `skip hold completed`
 
 If a video fails to start, check whether the player reaches a terminal state before the first texture is rendered.
+
+## Notes
+
+WaterMedia `3.0.0.17` can log lines such as:
+
+```text
+Main context EOF after ... video packets
+Seek after EOF — restarting pipeline
+```
+
+These lines are not necessarily errors. If WaterVision logs `first frame ready` and `first video texture rendered`, the cinematic is rendering correctly.
 
 ## License
 
