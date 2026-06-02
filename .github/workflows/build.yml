@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - watermedia-v3-compat
+      - watermedia-3.0.0.17-compat
   pull_request:
     branches:
       - 1.20.1
