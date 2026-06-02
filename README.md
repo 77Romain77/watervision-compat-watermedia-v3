@@ -17,6 +17,10 @@ This branch ports the video screen to the WaterMedia V3 API:
 - Keeps support for Forge 1.20.1.
 - Tested with WaterMedia `3.0.0.16` on Forge `1.20.1`.
 
+### WaterMedia 3.0.0.17 experimental branch
+
+The `watermedia-3.0.0.17-compat` branch contains experimental startup adjustments for WaterMedia `3.0.0.17`.
+
 ### More reliable video startup
 
 Some WaterMedia V3 players could start, read the video, but never render the first frame. In logs, this usually appeared as a player ending with `texture=0` before any frame was rendered.
