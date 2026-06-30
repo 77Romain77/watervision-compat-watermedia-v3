@@ -20,13 +20,10 @@ import org.watermedia.api.media.engines.ALEngine;
 import org.watermedia.api.media.engines.GLEngine;
 import org.watermedia.api.media.players.MediaPlayer;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.net.URI;
-import java.util.function.Supplier;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-watermedia-017-delay20-debug";
+    private static final String BUILD_TAG = "cinematic-ui-watermedia-021-debug";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 20;
@@ -35,9 +32,8 @@ public class VisionScreen extends Screen {
     private static final int SEEK_STEP_MS = 5000;
     private static final int SEEK_COOLDOWN_TICKS = 5;
     private static final int RESUME_DELAY_TICKS = 20;
-    private static final int LATE_RECOVERY_TICK = 40;
     private static final int SKIP_HOLD_TICKS = 40;
-    private static final int MAX_PLAYER_RECREATE_ATTEMPTS = 4;
+    private static final int MAX_PLAYER_RECREATE_ATTEMPTS = 1;
 
     private final URI uri;
     private final int commandVolume;
@@ -58,7 +54,6 @@ public class VisionScreen extends Screen {
     private int resumeDelayTicks;
     private boolean waitLogged;
     private boolean terminalAfterMaxLogged;
-    private boolean recoveryAttempted;
     private int playerRecreateAttempts;
     private boolean firstTextureRenderLogged;
     private int waitingTicks;
@@ -86,21 +81,32 @@ public class VisionScreen extends Screen {
         this.gameBackground = new FadeBackground(gameFadeDuration);
         this.videoBackground = new FadeBackground(videoFadeDuration);
         this.videoBackground.forceFadeIn();
-        this.mrl = MediaAPI.getMRL(uri.toString());
+        this.mrl = MediaAPI.getMRL(uri);
         Minecraft.getInstance().getSoundManager().pause();
         WaterVision.LOGGER.info("WaterVision screen opened [{}] for {}", BUILD_TAG, this.uri);
         WaterVision.LOGGER.info("WaterVision cinematic volume [{}]: command={} client={} effective={} controls={} exit={}", BUILD_TAG, this.commandVolume, this.clientVolume, this.effectiveVolume(), this.controls, this.exit);
     }
 
     private void tryCreatePlayer() {
-        if (this.released || this.videoPlayer != null || this.failedToCreatePlayer || !this.mrl.ready()) return;
-        if (this.mrlHasErrorCompat()) {
+        if (this.released || this.videoPlayer != null || this.failedToCreatePlayer) return;
+
+        final MRL.Status mrlStatus = this.mrl.status();
+        if (mrlStatus == MRL.Status.FETCHING) return;
+
+        if (mrlStatus == MRL.Status.EXPIRED || mrlStatus == MRL.Status.FORGOTTEN) {
+            WaterVision.LOGGER.warn("WaterVision MRL renewed [{}]: status={}, uri={}", BUILD_TAG, mrlStatus, this.uri);
+            this.mrl = MediaAPI.getMRL(this.uri);
+            return;
+        }
+
+        if (mrlStatus != MRL.Status.LOADED) {
             this.failedToCreatePlayer = true;
-            WaterVision.LOGGER.error("WaterMedia MRL failed before player creation [{}]: exception={}, uri={}", BUILD_TAG, this.mrlExceptionCompat(), this.uri);
+            WaterVision.LOGGER.error("WaterMedia MRL failed before player creation [{}]: status={}, exception={}, uri={}", BUILD_TAG, mrlStatus, this.mrl.exception(), this.uri);
             this.status = Status.CLOSING_VIDEO;
             return;
         }
-        this.videoPlayer = this.createCompatiblePlayer();
+
+        this.videoPlayer = MediaAPI.createPlayer(this.mrl, this::createGfxEngine, this::createSfxEngine);
         if (this.videoPlayer == null) {
             this.failedToCreatePlayer = true;
             WaterVision.LOGGER.error("WaterMedia failed to create a player [{}] for {}", BUILD_TAG, this.uri);
@@ -116,49 +122,6 @@ public class VisionScreen extends Screen {
         this.videoPaused = false;
         this.resumeDelayTicks = 0;
         WaterVision.LOGGER.info("WaterVision player created [{}] for {}", BUILD_TAG, this.uri);
-    }
-
-    private boolean mrlHasErrorCompat() {
-        try {
-            final Method method = this.mrl.getClass().getMethod("hasError");
-            final Object result = method.invoke(this.mrl);
-            return result instanceof Boolean && (Boolean) result;
-        } catch (final Throwable ignored) {
-            return false;
-        }
-    }
-
-    private Object mrlExceptionCompat() {
-        try {
-            final Method method = this.mrl.getClass().getMethod("exception");
-            return method.invoke(this.mrl);
-        } catch (final Throwable ignored) {
-            return null;
-        }
-    }
-
-    private MediaPlayer createCompatiblePlayer() {
-        try {
-            final Method method = MediaAPI.class.getMethod("createPlayer", MRL.class, Supplier.class, Supplier.class);
-            final Object player = method.invoke(null, this.mrl, (Supplier<GLEngine>) this::createGfxEngine, (Supplier<ALEngine>) this::createSfxEngine);
-            WaterVision.LOGGER.info("WaterVision using MediaAPI.createPlayer compatibility path [{}]", BUILD_TAG);
-            return (MediaPlayer) player;
-        } catch (final NoSuchMethodException ignored) {
-        } catch (final Throwable throwable) {
-            WaterVision.LOGGER.error("WaterVision failed to create player through MediaAPI.createPlayer [{}]", BUILD_TAG, throwable);
-            return null;
-        }
-        try {
-            final Class<?> gfxClass = Class.forName("org.watermedia.api.media.engines.GFXEngine");
-            final Class<?> sfxClass = Class.forName("org.watermedia.api.media.engines.SFXEngine");
-            final Method method = this.mrl.getClass().getMethod("createPlayer", gfxClass, sfxClass);
-            final Object player = method.invoke(this.mrl, this.createGfxEngine(), this.createSfxEngine());
-            WaterVision.LOGGER.info("WaterVision using MRL.createPlayer compatibility path [{}]", BUILD_TAG);
-            return (MediaPlayer) player;
-        } catch (final Throwable throwable) {
-            WaterVision.LOGGER.error("WaterVision failed to create player through MRL.createPlayer [{}]", BUILD_TAG, throwable);
-            return null;
-        }
     }
 
     private GLEngine createGfxEngine() {
@@ -334,11 +297,16 @@ public class VisionScreen extends Screen {
 
         if (this.videoPlayer != null && !this.isVideoReady() && this.status == Status.OPENING_GAME) {
             this.waitingTicks++;
-            if (this.waitingTicks == LATE_RECOVERY_TICK && !this.isTerminalBeforeFirstTexture()) {
-                this.kickWaterMediaDecodeThreadsIfNeeded("late-waiting-" + this.waitingTicks);
+
+            if (this.videoPlayer.error()) {
+                WaterVision.LOGGER.error("WaterVision player entered ERROR before first texture [{}]: wmStatus={}, texture={}, size={}x{}, uri={}",
+                        BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.uri);
+                this.status = Status.CLOSING_VIDEO;
+                return;
             }
-            if (this.waitingTicks >= 60 && this.isTerminalBeforeFirstTexture()) {
-                if (this.recreatePlayerOnce("terminal-before-first-texture")) return;
+
+            if (this.waitingTicks >= 60 && this.isEndedOrStoppedBeforeFirstTexture()) {
+                if (this.recreatePlayerOnce("ended-or-stopped-before-first-texture")) return;
                 this.logTerminalAfterMaxRecreates();
             }
             if (this.waitingTicks == 20 || this.waitingTicks == 100 || this.waitingTicks == 200 || this.waitingTicks == 400) {
@@ -386,8 +354,8 @@ public class VisionScreen extends Screen {
         }
     }
 
-    private boolean isTerminalBeforeFirstTexture() {
-        return this.videoPlayer != null && !this.firstTextureRenderLogged && this.videoPlayer.texture() == 0 && (this.videoPlayer.ended() || this.videoPlayer.stopped() || this.videoPlayer.error());
+    private boolean isEndedOrStoppedBeforeFirstTexture() {
+        return this.videoPlayer != null && !this.firstTextureRenderLogged && this.videoPlayer.texture() == 0 && (this.videoPlayer.ended() || this.videoPlayer.stopped());
     }
 
     private boolean recreatePlayerOnce(final String reason) {
@@ -399,10 +367,9 @@ public class VisionScreen extends Screen {
         this.videoPlayer = null;
         final String base = this.uri.toString();
         final String retryUrl = base + (base.contains("?") ? "&" : "?") + "wvRetry=" + this.playerRecreateAttempts + "&wvTime=" + System.nanoTime();
-        this.mrl = MediaAPI.getMRL(retryUrl);
+        this.mrl = MediaAPI.getMRL(URI.create(retryUrl));
         this.resumeRequested = false;
         this.resumeDelayTicks = 0;
-        this.recoveryAttempted = false;
         this.waitLogged = false;
         this.terminalAfterMaxLogged = false;
         this.videoPaused = false;
@@ -507,8 +474,9 @@ public class VisionScreen extends Screen {
 
     private void togglePlaybackControl() {
         if (!this.controls || this.videoPlayer == null || !this.isVideoReady() || this.status != Status.OPENING_VIDEO) return;
-        final boolean shouldPause = !this.isPlayerPausedCompat();
-        final boolean success = shouldPause ? this.videoPlayer.pause() : this.videoPlayer.resume();
+        final boolean shouldPause = !this.videoPlayer.paused();
+        boolean success = shouldPause ? this.videoPlayer.pause() : this.videoPlayer.resume();
+        if (!success) success = this.videoPlayer.togglePlay();
         if (success) {
             this.videoPaused = shouldPause;
             WaterVision.LOGGER.info("WaterVision playback control [{}]: paused={} uri={}", BUILD_TAG, this.videoPaused, this.uri);
@@ -517,20 +485,11 @@ public class VisionScreen extends Screen {
         }
     }
 
-    private boolean isPlayerPausedCompat() {
-        try {
-            return this.videoPlayer != null && "PAUSED".equals(this.videoPlayer.status().name());
-        } catch (final Throwable ignored) {
-            return this.videoPaused;
-        }
-    }
-
     private void seekRelativeControl(final int direction) {
         if (!this.controls || this.videoPlayer == null || !this.isVideoReady() || this.status != Status.OPENING_VIDEO) return;
-        if (this.seekCooldownTicks > 0 || this.videoPlayer.ended() || this.videoPlayer.stopped() || this.videoPlayer.error()) return;
-        boolean success = direction > 0
-                ? this.invokePlayerBooleanMethod("forward") || this.invokePlayerBooleanMethod("foward") || this.invokePlayerBooleanMethod("skipTime", long.class, SEEK_STEP_MS)
-                : this.invokePlayerBooleanMethod("rewind") || this.invokePlayerBooleanMethod("skipTime", long.class, -SEEK_STEP_MS);
+        if (this.seekCooldownTicks > 0 || this.videoPlayer.ended() || this.videoPlayer.stopped() || this.videoPlayer.error() || !this.videoPlayer.canSeek()) return;
+        boolean success = direction > 0 ? this.videoPlayer.forward() : this.videoPlayer.rewind();
+        if (!success) success = this.videoPlayer.skipTime((long) direction * SEEK_STEP_MS);
         if (success) {
             this.seekCooldownTicks = SEEK_COOLDOWN_TICKS;
             this.seekOverlayDirection = direction;
@@ -541,75 +500,12 @@ public class VisionScreen extends Screen {
         }
     }
 
-    private boolean invokePlayerBooleanMethod(final String name, final Object... args) {
-        if (this.videoPlayer == null) return false;
-        final Class<?>[] parameterTypes = new Class<?>[args.length / 2];
-        final Object[] values = new Object[args.length / 2];
-        for (int i = 0; i < args.length; i += 2) {
-            parameterTypes[i / 2] = (Class<?>) args[i];
-            values[i / 2] = args[i + 1];
-        }
-        try {
-            final Method method = this.videoPlayer.getClass().getMethod(name, parameterTypes);
-            method.setAccessible(true);
-            final Object result = method.invoke(this.videoPlayer, values);
-            return !(result instanceof Boolean) || (Boolean) result;
-        } catch (final Throwable ignored) {
-            return false;
-        }
-    }
-
     private int effectiveVolume() {
         return Mth.clamp(Math.round(this.commandVolume * (this.clientVolume / 100.0f)), 0, 100);
     }
 
     private void applyEffectiveVolume() {
         if (this.videoPlayer != null) this.videoPlayer.volume(this.effectiveVolume());
-    }
-
-    private void kickWaterMediaDecodeThreadsIfNeeded(final String stage) {
-        if (this.videoPlayer == null || this.recoveryAttempted) return;
-        try {
-            final Object player = this.videoPlayer;
-            final boolean lifecycleAlive = this.isThreadAlive(this.getFieldValue(player, "lifecycleThread"));
-            final boolean demuxAlive = this.isThreadAlive(this.getFieldValue(player, "demuxThread"));
-            final boolean videoMissing = this.isPresent(this.getFieldValue(player, "videoCodecContext")) && !this.isThreadAlive(this.getFieldValue(player, "videoDecodeThread"));
-            final boolean audioMissing = this.isPresent(this.getFieldValue(player, "audioCodecContext")) && !this.isThreadAlive(this.getFieldValue(player, "audioDecodeThread"));
-            if ((!lifecycleAlive && !demuxAlive) || (!videoMissing && !audioMissing)) return;
-            this.recoveryAttempted = true;
-            final Method ensureDecodeThreads = player.getClass().getDeclaredMethod("ensureDecodeThreads");
-            ensureDecodeThreads.setAccessible(true);
-            ensureDecodeThreads.invoke(player);
-            WaterVision.LOGGER.warn("WaterVision WM_RECOVERY [{}] stage={} invoked ensureDecodeThreads once: lifecycleAlive={}, demuxAlive={}, videoMissing={}, audioMissing={}, uri={}", BUILD_TAG, stage, lifecycleAlive, demuxAlive, videoMissing, audioMissing, this.uri);
-        } catch (final Throwable throwable) {
-            this.recoveryAttempted = true;
-            WaterVision.LOGGER.warn("WaterVision WM_RECOVERY [{}] stage={} failed to invoke ensureDecodeThreads", BUILD_TAG, stage, throwable);
-        }
-    }
-
-    private Object getFieldValue(final Object target, final String name) {
-        if (target == null) return null;
-        Class<?> clazz = target.getClass();
-        while (clazz != null) {
-            try {
-                final Field field = clazz.getDeclaredField(name);
-                field.setAccessible(true);
-                return field.get(target);
-            } catch (final NoSuchFieldException ignored) {
-                clazz = clazz.getSuperclass();
-            } catch (final Throwable throwable) {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    private boolean isPresent(final Object value) {
-        return value != null;
-    }
-
-    private boolean isThreadAlive(final Object value) {
-        return value instanceof final Thread thread && thread.isAlive() && !thread.isInterrupted();
     }
 
     private void releasePlayerOnly() {
