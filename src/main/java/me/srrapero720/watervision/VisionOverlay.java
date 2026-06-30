@@ -21,6 +21,7 @@ import java.util.Objects;
 
 @Mod.EventBusSubscriber(modid = WaterVision.ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public class VisionOverlay {
+    private static final String BUILD_TAG = "overlay-watermedia-021-debug";
     private static final int PADDING = 8;
     private static MediaPlayer player;
     private static MRL mrl;
@@ -46,8 +47,9 @@ public class VisionOverlay {
         if (!Objects.equals(activeUri, uri)) {
             releaseOverlay();
             activeUri = uri;
-            mrl = MediaAPI.getMRL(uri.toString());
+            mrl = MediaAPI.getMRL(uri);
             failureReported = false;
+            WaterVision.LOGGER.info("WaterVision overlay opened [{}] for {}", BUILD_TAG, activeUri);
         }
 
         if (player == null) {
@@ -60,6 +62,8 @@ public class VisionOverlay {
 
         if (player.error()) {
             reportFailure("Failed to open a video overlay");
+            WaterVision.LOGGER.error("WaterVision overlay player entered ERROR [{}]: status={}, texture={}, size={}x{}, uri={}",
+                    BUILD_TAG, player.status(), player.texture(), player.width(), player.height(), activeUri);
             releaseOverlay();
             uri = null;
             return;
@@ -89,22 +93,33 @@ public class VisionOverlay {
     }
 
     private static void tryCreatePlayer() {
-        if (mrl == null || !mrl.ready()) {
+        if (mrl == null) {
             return;
         }
 
-        if (mrl.error()) {
+        final MRL.Status mrlStatus = mrl.status();
+        if (mrlStatus == MRL.Status.FETCHING) {
+            return;
+        }
+
+        if (mrlStatus == MRL.Status.EXPIRED || mrlStatus == MRL.Status.FORGOTTEN) {
+            WaterVision.LOGGER.warn("WaterVision overlay MRL renewed [{}]: status={}, uri={}", BUILD_TAG, mrlStatus, activeUri);
+            mrl = MediaAPI.getMRL(activeUri);
+            return;
+        }
+
+        if (mrlStatus != MRL.Status.LOADED) {
             reportFailure("Failed to load a video overlay");
-            WaterVision.LOGGER.error("Failed to load overlay media resource: {}", activeUri);
+            WaterVision.LOGGER.error("WaterVision overlay MRL failed [{}]: status={}, exception={}, uri={}", BUILD_TAG, mrlStatus, mrl.exception(), activeUri);
             releaseOverlay();
             uri = null;
             return;
         }
 
-        player = mrl.createPlayer(createGfxEngine(), createSfxEngine());
+        player = MediaAPI.createPlayer(mrl, VisionOverlay::createGfxEngine, VisionOverlay::createSfxEngine);
         if (player == null) {
             reportFailure("Failed to create a video overlay player");
-            WaterVision.LOGGER.error("WaterMedia v3 failed to create an overlay player for: {}", activeUri);
+            WaterVision.LOGGER.error("WaterMedia v3 failed to create an overlay player [{}] for: {}", BUILD_TAG, activeUri);
             releaseOverlay();
             uri = null;
             return;
@@ -113,6 +128,7 @@ public class VisionOverlay {
         textureWrapper = new TextureWrapper(() -> (int) player.texture());
         Minecraft.getInstance().getTextureManager().register(TEXTURE, textureWrapper);
         player.start();
+        WaterVision.LOGGER.info("WaterVision overlay player started [{}] for {}", BUILD_TAG, activeUri);
     }
 
     private static GLEngine createGfxEngine() {
