@@ -87,7 +87,9 @@ dependencies {
     minecraft "net.minecraftforge:forge:${minecraftversion}-${forgeversion}"
     annotationProcessor "net.fabricmc:sponge-mixin:${mixin_fabric_version}+mixin.${mixin_version}"
 
-    implementation fg.deobf("curse.maven:watermedia-869524:7999277")
+    // Keep this branch on the newest WaterMedia available from CurseMaven.
+    // If CurseMaven cannot resolve latest.release, replace it with the CurseForge file id for WaterMedia ${watermediaversion}.
+    implementation fg.deobf("curse.maven:watermedia-869524:latest.release")
 
     compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:${mixinextra_version}"))
     implementation(jarJar("io.github.llamalad7:mixinextras-forge:${mixinextra_version}")) {
