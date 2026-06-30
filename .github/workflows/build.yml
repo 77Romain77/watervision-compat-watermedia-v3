@@ -30,7 +30,16 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build with stacktrace
-        run: ./gradlew --no-daemon clean build --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon clean build --stacktrace 2>&1 | tee build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watervision-build-log
+          path: build.log
 
       - name: Upload jar
         uses: actions/upload-artifact@v4
