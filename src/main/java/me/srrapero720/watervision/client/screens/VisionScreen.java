@@ -529,7 +529,7 @@ public class VisionScreen extends Screen {
             Files.deleteIfExists(metadataFile);
         }
 
-        final Path tempFile = cacheDirectory.resolve(cacheFile.getFileName().toString() + ".download");
+        final Path tempFile = cacheDirectory.resolve(cacheFile.getFileName().toString() + "." + System.nanoTime() + ".download");
         Files.deleteIfExists(tempFile);
         WaterVision.LOGGER.info("WaterVision downloading video to cache [{}]: uri={}, file={}", BUILD_TAG, remoteUri, cacheFile);
         final HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build();
@@ -543,8 +543,13 @@ public class VisionScreen extends Screen {
             Files.deleteIfExists(tempFile);
             throw new IOException("HTTP " + response.statusCode() + " while downloading " + remoteUri);
         }
-        Files.move(tempFile, cacheFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         final CacheMetadata downloadedMetadata = remoteMetadata != null ? remoteMetadata : this.metadataFromResponse(response);
+        final long downloadedBytes = Files.size(tempFile);
+        if (downloadedMetadata.contentLength() >= 0L && downloadedBytes != downloadedMetadata.contentLength()) {
+            Files.deleteIfExists(tempFile);
+            throw new IOException("Incomplete download for " + remoteUri + ": got " + downloadedBytes + " bytes, expected " + downloadedMetadata.contentLength());
+        }
+        Files.move(tempFile, cacheFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         this.writeCacheMetadata(metadataFile, remoteUri, downloadedMetadata);
         WaterVision.LOGGER.info("WaterVision cache download completed [{}]: uri={}, file={}, bytes={}, metadata={}",
                 BUILD_TAG, remoteUri, cacheFile, Files.size(cacheFile), downloadedMetadata);
