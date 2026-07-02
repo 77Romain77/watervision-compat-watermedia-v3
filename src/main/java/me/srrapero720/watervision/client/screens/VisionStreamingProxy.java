@@ -22,7 +22,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 final class VisionStreamingProxy {
-    private static final String BUILD_TAG = "streaming-proxy-001";
+    private static final String BUILD_TAG = "streaming-proxy-002";
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
             .connectTimeout(Duration.ofSeconds(10))
@@ -42,6 +42,12 @@ final class VisionStreamingProxy {
         final URI proxyUri = URI.create("http://127.0.0.1:" + port + "/watervision/" + token + extension(remoteUri));
         WaterVision.LOGGER.info("WaterVision streaming proxy route created [{}]: proxyUri={}, remoteUri={}", BUILD_TAG, proxyUri, remoteUri);
         return proxyUri;
+    }
+
+    static boolean isProxyUri(final URI uri) {
+        if (uri == null || uri.getHost() == null || uri.getPath() == null) return false;
+        final String host = uri.getHost();
+        return ("127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host)) && uri.getPath().startsWith("/watervision/");
     }
 
     private static synchronized void ensureStarted() throws IOException {
@@ -89,7 +95,7 @@ final class VisionStreamingProxy {
             }
 
             final String method = requestParts[0].toUpperCase(Locale.ROOT);
-            final String path = requestParts[1];
+            final String path = normalizePath(requestParts[1]);
             String rangeHeader = null;
             String line;
             while ((line = reader.readLine()) != null && !line.isEmpty()) {
@@ -119,12 +125,14 @@ final class VisionStreamingProxy {
 
             if ("HEAD".equals(method)) {
                 final HttpResponse<Void> response = HTTP_CLIENT.send(requestBuilder.method("HEAD", HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.discarding());
-                writeResponseHeaders(output, response.statusCode(), response, true);
+                WaterVision.LOGGER.info("WaterVision streaming proxy HEAD [{}]: status={}, range={}, remoteUri={}", BUILD_TAG, response.statusCode(), rangeHeader, remoteUri);
+                writeResponseHeaders(output, response.statusCode(), response);
                 return;
             }
 
             final HttpResponse<InputStream> response = HTTP_CLIENT.send(requestBuilder.GET().build(), HttpResponse.BodyHandlers.ofInputStream());
-            writeResponseHeaders(output, response.statusCode(), response, false);
+            WaterVision.LOGGER.info("WaterVision streaming proxy GET [{}]: status={}, range={}, remoteUri={}", BUILD_TAG, response.statusCode(), rangeHeader, remoteUri);
+            writeResponseHeaders(output, response.statusCode(), response);
             try (InputStream responseBody = response.body()) {
                 responseBody.transferTo(output);
             }
@@ -134,17 +142,28 @@ final class VisionStreamingProxy {
         }
     }
 
-    private static URI route(final String rawPath) {
-        final String path = rawPath == null ? "" : rawPath.split("\\?", 2)[0];
+    private static String normalizePath(final String rawPath) {
+        if (rawPath == null) return "";
+        if (rawPath.startsWith("http://") || rawPath.startsWith("https://")) {
+            try {
+                return URI.create(rawPath).getPath();
+            } catch (final Exception ignored) {
+                return rawPath;
+            }
+        }
+        return rawPath.split("\\?", 2)[0];
+    }
+
+    private static URI route(final String path) {
         final String prefix = "/watervision/";
-        if (!path.startsWith(prefix)) return null;
+        if (path == null || !path.startsWith(prefix)) return null;
         final String fileName = path.substring(prefix.length());
         final int dot = fileName.indexOf('.');
         final String token = dot >= 0 ? fileName.substring(0, dot) : fileName;
         return ROUTES.get(token);
     }
 
-    private static void writeResponseHeaders(final OutputStream output, final int statusCode, final HttpResponse<?> response, final boolean headOnly) throws IOException {
+    private static void writeResponseHeaders(final OutputStream output, final int statusCode, final HttpResponse<?> response) throws IOException {
         writeAscii(output, "HTTP/1.1 " + statusCode + " " + reason(statusCode) + "\r\n");
         writeAscii(output, "Connection: close\r\n");
         writeAscii(output, "Accept-Ranges: bytes\r\n");
@@ -153,7 +172,6 @@ final class VisionStreamingProxy {
         response.headers().firstValue("Content-Range").ifPresent(value -> writeHeader(output, "Content-Range", value));
         response.headers().firstValue("Last-Modified").ifPresent(value -> writeHeader(output, "Last-Modified", value));
         response.headers().firstValue("ETag").ifPresent(value -> writeHeader(output, "ETag", value));
-        if (headOnly) writeAscii(output, "Content-Length: 0\r\n");
         writeAscii(output, "\r\n");
         output.flush();
     }
