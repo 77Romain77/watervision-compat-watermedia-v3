@@ -33,11 +33,12 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Locale;
+import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-watermedia-021-cache-fallback";
+    private static final String BUILD_TAG = "cinematic-ui-watermedia-021-cache-fallback-meta";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 20;
@@ -450,10 +451,26 @@ public class VisionScreen extends Screen {
         Files.createDirectories(cacheDirectory);
         final String extension = this.safeExtension(remoteUri);
         final Path cacheFile = cacheDirectory.resolve("media-" + this.sha256(remoteUri.toString()) + extension);
+        final Path metadataFile = cacheDirectory.resolve(cacheFile.getFileName().toString() + ".meta");
+        final CacheMetadata remoteMetadata = this.fetchRemoteMetadata(remoteUri);
+
         if (Files.isRegularFile(cacheFile) && Files.size(cacheFile) > 0L) {
-            WaterVision.LOGGER.info("WaterVision cache hit [{}]: uri={}, file={}", BUILD_TAG, remoteUri, cacheFile);
-            return cacheFile.toUri();
+            final long cachedSize = Files.size(cacheFile);
+            final CacheMetadata cachedMetadata = this.readCacheMetadata(metadataFile);
+            if (remoteMetadata == null) {
+                WaterVision.LOGGER.warn("WaterVision cache hit without remote validation [{}]: uri={}, file={}, bytes={}", BUILD_TAG, remoteUri, cacheFile, cachedSize);
+                return cacheFile.toUri();
+            }
+            if (cachedMetadata != null && cachedMetadata.matches(remoteMetadata, cachedSize)) {
+                WaterVision.LOGGER.info("WaterVision cache hit validated [{}]: uri={}, file={}, metadata={}", BUILD_TAG, remoteUri, cacheFile, remoteMetadata);
+                return cacheFile.toUri();
+            }
+            WaterVision.LOGGER.info("WaterVision cache stale [{}], redownloading: uri={}, file={}, cachedMetadata={}, remoteMetadata={}, cachedBytes={}",
+                    BUILD_TAG, remoteUri, cacheFile, cachedMetadata, remoteMetadata, cachedSize);
+            Files.deleteIfExists(cacheFile);
+            Files.deleteIfExists(metadataFile);
         }
+
         final Path tempFile = cacheDirectory.resolve(cacheFile.getFileName().toString() + ".download");
         Files.deleteIfExists(tempFile);
         WaterVision.LOGGER.info("WaterVision downloading video to cache [{}]: uri={}, file={}", BUILD_TAG, remoteUri, cacheFile);
@@ -469,8 +486,74 @@ public class VisionScreen extends Screen {
             throw new IOException("HTTP " + response.statusCode() + " while downloading " + remoteUri);
         }
         Files.move(tempFile, cacheFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        WaterVision.LOGGER.info("WaterVision cache download completed [{}]: uri={}, file={}, bytes={}", BUILD_TAG, remoteUri, cacheFile, Files.size(cacheFile));
+        final CacheMetadata downloadedMetadata = remoteMetadata != null ? remoteMetadata : this.metadataFromResponse(response);
+        this.writeCacheMetadata(metadataFile, remoteUri, downloadedMetadata);
+        WaterVision.LOGGER.info("WaterVision cache download completed [{}]: uri={}, file={}, bytes={}, metadata={}",
+                BUILD_TAG, remoteUri, cacheFile, Files.size(cacheFile), downloadedMetadata);
         return cacheFile.toUri();
+    }
+
+    private CacheMetadata fetchRemoteMetadata(final URI remoteUri) {
+        try {
+            final HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build();
+            final HttpRequest request = HttpRequest.newBuilder(remoteUri)
+                    .method("HEAD", HttpRequest.BodyPublishers.noBody())
+                    .header("User-Agent", "WaterVision/0.1 cache-validator")
+                    .header("Accept", "video/mp4,video/*,*/*")
+                    .build();
+            final HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                WaterVision.LOGGER.warn("WaterVision remote metadata check failed [{}]: status={}, uri={}", BUILD_TAG, response.statusCode(), remoteUri);
+                return null;
+            }
+            return this.metadataFromResponse(response);
+        } catch (final Exception exception) {
+            WaterVision.LOGGER.warn("WaterVision remote metadata check failed [{}]: uri={}", BUILD_TAG, remoteUri, exception);
+            return null;
+        }
+    }
+
+    private CacheMetadata metadataFromResponse(final HttpResponse<?> response) {
+        final String etag = response.headers().firstValue("ETag").orElse("");
+        final String lastModified = response.headers().firstValue("Last-Modified").orElse("");
+        final long contentLength = this.parseLong(response.headers().firstValue("Content-Length").orElse("-1"), -1L);
+        return new CacheMetadata(etag, lastModified, contentLength);
+    }
+
+    private CacheMetadata readCacheMetadata(final Path metadataFile) {
+        if (!Files.isRegularFile(metadataFile)) return null;
+        final Properties properties = new Properties();
+        try (final var input = Files.newInputStream(metadataFile)) {
+            properties.load(input);
+            final String etag = properties.getProperty("etag", "");
+            final String lastModified = properties.getProperty("lastModified", "");
+            final long contentLength = this.parseLong(properties.getProperty("contentLength", "-1"), -1L);
+            return new CacheMetadata(etag, lastModified, contentLength);
+        } catch (final IOException exception) {
+            WaterVision.LOGGER.warn("WaterVision cache metadata read failed [{}]: file={}", BUILD_TAG, metadataFile, exception);
+            return null;
+        }
+    }
+
+    private void writeCacheMetadata(final Path metadataFile, final URI remoteUri, final CacheMetadata metadata) throws IOException {
+        final Properties properties = new Properties();
+        properties.setProperty("url", remoteUri.toString());
+        if (metadata != null) {
+            properties.setProperty("etag", metadata.etag());
+            properties.setProperty("lastModified", metadata.lastModified());
+            properties.setProperty("contentLength", Long.toString(metadata.contentLength()));
+        }
+        try (final var output = Files.newOutputStream(metadataFile)) {
+            properties.store(output, "WaterVision cache metadata");
+        }
+    }
+
+    private long parseLong(final String value, final long fallback) {
+        try {
+            return Long.parseLong(value.trim());
+        } catch (final Exception ignored) {
+            return fallback;
+        }
     }
 
     private String safeExtension(final URI remoteUri) {
@@ -664,6 +747,16 @@ public class VisionScreen extends Screen {
     }
 
     public record AspectRatioDimension(int x, int y, int width, int height) { }
+
+    private record CacheMetadata(String etag, String lastModified, long contentLength) {
+        private boolean matches(final CacheMetadata remote, final long cachedFileSize) {
+            if (remote == null) return false;
+            if (remote.contentLength() >= 0L && cachedFileSize != remote.contentLength()) return false;
+            if (!remote.etag().isBlank()) return remote.etag().equals(this.etag());
+            if (!remote.lastModified().isBlank()) return remote.lastModified().equals(this.lastModified());
+            return remote.contentLength() >= 0L && cachedFileSize == remote.contentLength();
+        }
+    }
 
     public enum Status {
         OPENING_GAME,
