@@ -38,7 +38,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-watermedia-021-streaming-proxy";
+    private static final String BUILD_TAG = "cinematic-ui-watermedia-021-streaming-proxy-safe";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 20;
@@ -121,6 +121,7 @@ public class VisionScreen extends Screen {
         }
 
         if (mrlStatus != MRL.Status.LOADED) {
+            if (VisionStreamingProxy.isProxyUri(this.playbackUri) && this.startFullDownloadFallback("proxy-mrl-status-" + mrlStatus)) return;
             if (this.startCacheOrProxyFallback("mrl-status-" + mrlStatus)) return;
             this.failedToCreatePlayer = true;
             WaterVision.LOGGER.error("WaterMedia MRL failed before player creation [{}]: status={}, exception={}, uri={}", BUILD_TAG, mrlStatus, this.mrl.exception(), this.playbackUri);
@@ -130,6 +131,7 @@ public class VisionScreen extends Screen {
 
         this.videoPlayer = MediaAPI.createPlayer(this.mrl, this::createGfxEngine, this::createSfxEngine);
         if (this.videoPlayer == null) {
+            if (VisionStreamingProxy.isProxyUri(this.playbackUri) && this.startFullDownloadFallback("proxy-create-player-null")) return;
             if (this.startCacheOrProxyFallback("create-player-null")) return;
             this.failedToCreatePlayer = true;
             WaterVision.LOGGER.error("WaterMedia failed to create a player [{}] for {}", BUILD_TAG, this.playbackUri);
@@ -433,7 +435,7 @@ public class VisionScreen extends Screen {
     private boolean startFullDownloadFallback(final String reason) {
         if (this.fullDownloadFallbackAttempted || !VisionStreamingProxy.isProxyUri(this.playbackUri)) return false;
         this.fullDownloadFallbackAttempted = true;
-        WaterVision.LOGGER.warn("WaterVision streaming proxy failed before first texture [{}], trying full cache download fallback: reason={}, proxyUri={}, originalUri={}", BUILD_TAG, reason, this.playbackUri, this.uri);
+        WaterVision.LOGGER.warn("WaterVision streaming proxy failed [{}], waiting for full cache download fallback: reason={}, proxyUri={}, originalUri={}", BUILD_TAG, reason, this.playbackUri, this.uri);
         this.releasePlayerOnly();
         this.failedToCreatePlayer = false;
         this.status = Status.OPENING_GAME;
