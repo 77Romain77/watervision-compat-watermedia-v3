@@ -22,7 +22,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 final class VisionStreamingProxy {
-    private static final String BUILD_TAG = "streaming-proxy-002";
+    private static final String BUILD_TAG = "streaming-proxy-003";
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
             .connectTimeout(Duration.ofSeconds(10))
@@ -52,7 +52,7 @@ final class VisionStreamingProxy {
 
     private static synchronized void ensureStarted() throws IOException {
         if (serverSocket != null && !serverSocket.isClosed()) return;
-        serverSocket = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
+        serverSocket = new ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"));
         port = serverSocket.getLocalPort();
         serverThread = new Thread(VisionStreamingProxy::acceptLoop, "WaterVision-StreamingProxy");
         serverThread.setDaemon(true);
@@ -61,6 +61,7 @@ final class VisionStreamingProxy {
     }
 
     private static void acceptLoop() {
+        WaterVision.LOGGER.info("WaterVision streaming proxy accept loop running [{}]", BUILD_TAG);
         while (serverSocket != null && !serverSocket.isClosed()) {
             try {
                 final Socket socket = serverSocket.accept();
