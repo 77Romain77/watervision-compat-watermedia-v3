@@ -226,16 +226,15 @@ public class VisionScreen extends Screen {
     }
 
     private int tipsLineCount() {
-        int lines = 3;
+        int lines = 2;
         if (this.controls) lines += 2;
         if (this.exit) lines++;
         return lines;
     }
 
     private void renderTips(final GuiGraphics graphics, final int x, final int y) {
-        final String[] lines = new String[6];
+        final String[] lines = new String[5];
         int count = 0;
-        lines[count++] = "Tips :";
         lines[count++] = "Masquer : touche K";
         lines[count++] = "Régler le volume : ↑ / ↓";
         if (this.controls) {
@@ -249,7 +248,7 @@ public class VisionScreen extends Screen {
         final int width = Math.max(80, maxTextWidth + 10);
         final int height = this.tipsHeight();
         graphics.fill(x - 5, y - 5, x + width, y + height, 0xAA000000);
-        for (int i = 0; i < count; i++) graphics.drawString(this.font, lines[i], x, y + i * 11, i == 0 ? 0xFFFFFF : 0xDDDDDD);
+        for (int i = 0; i < count; i++) graphics.drawString(this.font, lines[i], x, y + i * 11, 0xDDDDDD);
     }
 
     private void renderVolumeOverlay(final GuiGraphics graphics, final int x, final int y) {
