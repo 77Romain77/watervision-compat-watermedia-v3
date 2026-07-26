@@ -9,7 +9,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.net.URI;
 
-@Mixin(VisionScreen.class)
+@Mixin(value = VisionScreen.class, remap = false)
 public class VisionScreenAudioMixin {
 
     @Inject(method = "<init>", at = @At("RETURN"))
