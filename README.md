@@ -11,6 +11,7 @@ This branch targets **WaterMedia 3.0.0.21** and adds a safer cinematic player la
 - Dynamic tips overlay.
 - HTTP fallback through a local streaming proxy.
 - Persistent local video cache with remote update validation.
+- Temporary mute for Minecraft audio and received Simple Voice Chat audio.
 
 This project is not affiliated with Mr.Puzzle or PuzzleVision.
 
@@ -22,6 +23,7 @@ This branch is intended for:
 Minecraft Forge 1.20.1
 WaterMedia 3.0.0.21
 watermedia_binaries 3.0.0-rc.4
+Optional: Simple Voice Chat 1.20.1-2.6.16 / voicechat_api 2.6.13+
 ```
 
 It was created separately from the older WaterMedia compatibility branches so the working WaterMedia `3.0.0.16` and `3.0.0.17` variants stay untouched.
@@ -114,6 +116,35 @@ WaterVision streaming proxy failed, waiting for full cache download fallback
 ```
 
 The proxy can log `Connection reset by peer` or `Une connexion établie a été abandonnée...` when WaterMedia closes a range request early, seeks, skips, or stops playback. This is usually harmless as long as the video continues playing and `first frame ready` appears.
+
+### Exclusive cinematic audio
+
+While a fullscreen `VisionScreen` cinematic is active, WaterVision keeps only the video audio audible.
+
+Minecraft audio is muted in memory at the sound engine level, including:
+
+- Music.
+- Ambient sounds.
+- Blocks, mobs, players, weather, records, and UI sounds.
+- New sounds started while the cinematic is already playing.
+
+Existing Minecraft sounds are paused when the cinematic opens and resumed when it closes.
+
+When Simple Voice Chat is installed, WaterVision registers an optional voice chat API plugin and cancels received `ClientReceiveSoundEvent` audio during the cinematic. This mutes proximity voice, group voice, and received audio from voice chat addons while keeping the local microphone behavior unchanged.
+
+The mute state is temporary and exists only in memory:
+
+- Minecraft volume options are not changed.
+- Nothing is written to `options.txt`.
+- Normal close, video end, skip, failure, disconnection, or unexpected screen replacement restores game audio.
+- A full client crash destroys the temporary state, so the next launch starts with the player's normal audio settings.
+
+Useful log entries:
+
+```text
+WaterVision cinematic audio mute: active=true
+WaterVision cinematic audio mute: active=false
+```
 
 ### Cinematic volume control
 
@@ -294,6 +325,8 @@ Useful WaterVision log entries include:
 - `streaming proxy started`
 - `streaming proxy fallback ready`
 - `background cache download completed`
+- `cinematic audio mute: active=true`
+- `cinematic audio mute: active=false`
 
 If a video fails to start, check whether the failure happens on the original remote URL, the proxy URL, or the cached local file.
 
