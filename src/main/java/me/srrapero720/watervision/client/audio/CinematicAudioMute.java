@@ -1,6 +1,7 @@
 package me.srrapero720.watervision.client.audio;
 
 import me.srrapero720.watervision.WaterVision;
+import me.srrapero720.watervision.compat.regionmusic.RegionMusicCompat;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -25,6 +26,7 @@ public final class CinematicAudioMute {
         final boolean previous = ACTIVE.getAndSet(active);
         if (previous != active) {
             WaterVision.LOGGER.info("WaterVision cinematic audio mute: active={}", active);
+            RegionMusicCompat.setCinematicActive(active);
             return true;
         }
         return false;
