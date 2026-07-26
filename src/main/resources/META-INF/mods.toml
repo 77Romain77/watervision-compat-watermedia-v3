@@ -12,22 +12,31 @@ issueTrackerURL="https://github.com/${github}/issues" #optional
    credits="${modcredits}" #optional
    authors="${modauthors}" #optional
    description='''${moddesc}'''
+
 [[dependencies.${modid}]]
     modId="watermedia"
     mandatory=true
     versionRange="${watermediarange}"
     ordering="AFTER"
     side="CLIENT"
-[[dependencies.${modid}]] #optional
-   # the modid of the dependency
-   modId="forge" #mandatory
-   mandatory=true #mandatory
-   versionRange="${forgerange}" #mandatory
-   ordering="NONE"
-   side="BOTH"# Here's another dependency
+
 [[dependencies.${modid}]]
-   modId="minecraft"
-   mandatory=true
-   versionRange="${minecraftversion}"
-   ordering="NONE"
-   side="BOTH"
+    modId="voicechat_api"
+    mandatory=false
+    versionRange="[${voicechat_api_version},)"
+    ordering="AFTER"
+    side="CLIENT"
+
+[[dependencies.${modid}]]
+    modId="forge"
+    mandatory=true
+    versionRange="${forgerange}"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${modid}]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="${minecraftversion}"
+    ordering="NONE"
+    side="BOTH"
