@@ -10,7 +10,9 @@
   "client": [
     "ConnectionMixin",
     "IntegratedServerMixin",
-    "MinecraftMixin"
+    "MinecraftMixin",
+    "SoundEngineMixin",
+    "VisionScreenAudioMixin"
   ],
   "injectors": {
     "defaultRequire": 1
