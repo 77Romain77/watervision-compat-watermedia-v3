@@ -63,6 +63,7 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 repositories {
     maven { url "https://repo.spongepowered.org/maven" }
     maven { url "https://maven.fabricmc.net/" }
+    maven { url "https://maven.maxhenkel.de/repository/public" }
     maven {
         url "https://www.cursemaven.com"
         content { includeGroup "curse.maven" }
@@ -90,6 +91,10 @@ dependencies {
     // WaterMedia 3.0.0.19 is currently the latest 3.x CurseForge file available through CurseMaven.
     // The GitHub changelog may mention newer unreleased entries before a CurseForge file id exists.
     implementation fg.deobf("curse.maven:watermedia-869524:8316156")
+
+    // Optional at runtime. When Simple Voice Chat is installed, WaterVision cancels
+    // received voice audio while a fullscreen cinematic is active.
+    compileOnly "de.maxhenkel.voicechat:voicechat-api:${voicechat_api_version}"
 
     compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:${mixinextra_version}"))
     implementation(jarJar("io.github.llamalad7:mixinextras-forge:${mixinextra_version}")) {
