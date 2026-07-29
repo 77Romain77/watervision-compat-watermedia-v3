@@ -34,11 +34,11 @@ jobs:
         if: github.ref_name == 'watermedia-3.0.0.23-compat' || github.head_ref == 'watermedia-3.0.0.23-compat'
         run: |
           set -o pipefail
-          ./gradlew --no-daemon dependencies --configuration compileClasspath > /dev/null
-          WM_JAR=$(find "$HOME/.gradle/caches/modules-2/files-2.1/maven.modrinth/G922NeHS/FdCZ5Rxq" -type f -name '*.jar' ! -name '*sources*' | head -n 1)
-          echo "WaterMedia jar: $WM_JAR" | tee watermedia-api.txt
-          javap -classpath "$WM_JAR" org.watermedia.api.media.MediaAPI | tee -a watermedia-api.txt
-          javap -classpath "$WM_JAR" org.watermedia.api.media.MRL | tee -a watermedia-api.txt
+          curl --fail --location --retry 3 --output watermedia-3.0.0.23.jar \
+            'https://cdn.modrinth.com/data/G922NeHS/versions/FdCZ5Rxq/watermedia-3.0.0.23.jar'
+          echo 'WaterMedia 3.0.0.23 API signatures' | tee watermedia-api.txt
+          javap -classpath watermedia-3.0.0.23.jar org.watermedia.api.media.MediaAPI | tee -a watermedia-api.txt
+          javap -classpath watermedia-3.0.0.23.jar org.watermedia.api.media.MRL | tee -a watermedia-api.txt
 
       - name: Build with stacktrace
         run: |
