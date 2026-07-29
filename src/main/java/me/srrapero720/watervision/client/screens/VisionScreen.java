@@ -1,6 +1,5 @@
 package me.srrapero720.watervision.client.screens;
 
-import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.platform.InputConstants;
 import me.srrapero720.watervision.WaterVision;
 import me.srrapero720.watervision.WaterVisionClient;
@@ -38,7 +37,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-watermedia-021-streaming-proxy-safe";
+    private static final String BUILD_TAG = "cinematic-ui-watermedia-023-streaming-proxy-safe";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 20;
@@ -141,26 +140,28 @@ public class VisionScreen extends Screen {
         this.applyEffectiveVolume();
         this.videoPlayer.speed(this.speed);
         this.videoPlayer.repeat(false);
+        if (!this.videoPlayer.startPaused()) {
+            WaterVision.LOGGER.error("WaterMedia refused startPaused [{}] for {}", BUILD_TAG, this.playbackUri);
+            if (VisionStreamingProxy.isProxyUri(this.playbackUri) && this.startFullDownloadFallback("proxy-start-paused-refused")) return;
+            if (this.startCacheOrProxyFallback("start-paused-refused")) return;
+            this.releasePlayerOnly();
+            this.failedToCreatePlayer = true;
+            this.status = Status.CLOSING_VIDEO;
+            return;
+        }
         this.textureWrapper = new TextureWrapper(() -> (int) this.videoPlayer.texture());
         Minecraft.getInstance().getTextureManager().register(TEXTURE, this.textureWrapper);
-        this.videoPlayer.startPaused();
         this.videoPaused = false;
         this.resumeDelayTicks = 0;
         WaterVision.LOGGER.info("WaterVision player created [{}] for {}", BUILD_TAG, this.playbackUri);
     }
 
     private GLEngine createGfxEngine() {
-        return new GLEngine.Builder(Thread.currentThread(), Minecraft.getInstance())
-                .setGenTexture(GlStateManager::_genTexture)
-                .setBindTexture((target, texture) -> GlStateManager._bindTexture(texture))
-                .setTexParameter(GlStateManager::_texParameter)
-                .setPixelStore(GlStateManager::_pixelStore)
-                .setDelTexture(GlStateManager::_deleteTexture)
-                .build();
+        return MediaAPI.glEngine(Thread.currentThread(), Minecraft.getInstance());
     }
 
     private ALEngine createSfxEngine() {
-        return ALEngine.buildDefault();
+        return MediaAPI.alEngine();
     }
 
     @Override
