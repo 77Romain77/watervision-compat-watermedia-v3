@@ -14,9 +14,11 @@ java {
     withSourcesJar()
 }
 
+// Keep the TFOT release version in gradle.properties. The WaterMedia version is
+// inserted automatically into every produced archive name.
+version = modversion
 base {
-    archivesName = modid
-    version = "$modloader-mc$minecraftversion-v$modversion"
+    archivesName = "Watervision-tfot-${watermediaversion}"
 }
 
 java.toolchain {
