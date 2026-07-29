@@ -1,6 +1,5 @@
 package me.srrapero720.watervision;
 
-import com.mojang.blaze3d.platform.GlStateManager;
 import me.srrapero720.watervision.client.render.TextureWrapper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -21,7 +20,7 @@ import java.util.Objects;
 
 @Mod.EventBusSubscriber(modid = WaterVision.ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public class VisionOverlay {
-    private static final String BUILD_TAG = "overlay-watermedia-021-debug";
+    private static final String BUILD_TAG = "overlay-watermedia-023-debug";
     private static final int PADDING = 8;
     private static MediaPlayer player;
     private static MRL mrl;
@@ -47,7 +46,7 @@ public class VisionOverlay {
         if (!Objects.equals(activeUri, uri)) {
             releaseOverlay();
             activeUri = uri;
-            mrl = MediaAPI.getMRL(uri);
+            mrl = MediaAPI.mrl(uri);
             failureReported = false;
             WaterVision.LOGGER.info("WaterVision overlay opened [{}] for {}", BUILD_TAG, activeUri);
         }
@@ -104,7 +103,7 @@ public class VisionOverlay {
 
         if (mrlStatus == MRL.Status.EXPIRED || mrlStatus == MRL.Status.FORGOTTEN) {
             WaterVision.LOGGER.warn("WaterVision overlay MRL renewed [{}]: status={}, uri={}", BUILD_TAG, mrlStatus, activeUri);
-            mrl = MediaAPI.getMRL(activeUri);
+            mrl = MediaAPI.mrl(activeUri);
             return;
         }
 
@@ -125,24 +124,25 @@ public class VisionOverlay {
             return;
         }
 
+        if (!player.start()) {
+            reportFailure("Failed to start a video overlay player");
+            WaterVision.LOGGER.error("WaterMedia refused overlay start [{}] for {}", BUILD_TAG, activeUri);
+            releaseOverlay();
+            uri = null;
+            return;
+        }
+
         textureWrapper = new TextureWrapper(() -> (int) player.texture());
         Minecraft.getInstance().getTextureManager().register(TEXTURE, textureWrapper);
-        player.start();
         WaterVision.LOGGER.info("WaterVision overlay player started [{}] for {}", BUILD_TAG, activeUri);
     }
 
     private static GLEngine createGfxEngine() {
-        return new GLEngine.Builder(Thread.currentThread(), Minecraft.getInstance())
-                .setGenTexture(GlStateManager::_genTexture)
-                .setBindTexture((target, texture) -> GlStateManager._bindTexture(texture))
-                .setTexParameter(GlStateManager::_texParameter)
-                .setPixelStore(GlStateManager::_pixelStore)
-                .setDelTexture(GlStateManager::_deleteTexture)
-                .build();
+        return MediaAPI.glEngine(Thread.currentThread(), Minecraft.getInstance());
     }
 
     private static ALEngine createSfxEngine() {
-        return ALEngine.buildDefault();
+        return MediaAPI.alEngine();
     }
 
     private static void reportFailure(final String message) {
