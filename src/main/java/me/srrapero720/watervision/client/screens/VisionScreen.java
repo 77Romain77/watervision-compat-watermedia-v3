@@ -492,11 +492,6 @@ public class VisionScreen extends Screen {
             this.resumeRetryDelayTicks--;
             return true;
         }
-        if (this.videoPlayer.loading() || this.videoPlayer.buffering() || this.videoPlayer.waiting()) {
-            this.resumeRetryDelayTicks = 5;
-            return true;
-        }
-
         this.resumeAttempts++;
         if (this.videoPlayer.resume() || this.videoPlayer.playing()) {
             this.resumeRequested = true;
