@@ -30,27 +30,10 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
-      - name: Inspect WaterMedia API
-        if: github.ref_name == 'watermedia-3.0.0.23-compat' || github.head_ref == 'watermedia-3.0.0.23-compat'
-        run: |
-          set -o pipefail
-          curl --fail --location --retry 3 --output watermedia-3.0.0.23.jar \
-            'https://cdn.modrinth.com/data/G922NeHS/versions/FdCZ5Rxq/watermedia-3.0.0.23.jar'
-          echo 'WaterMedia 3.0.0.23 API signatures' | tee watermedia-api.txt
-          javap -classpath watermedia-3.0.0.23.jar org.watermedia.api.media.MediaAPI | tee -a watermedia-api.txt
-          javap -classpath watermedia-3.0.0.23.jar org.watermedia.api.media.MRL | tee -a watermedia-api.txt
-
       - name: Build with stacktrace
         run: |
           set -o pipefail
           ./gradlew --no-daemon clean build --stacktrace 2>&1 | tee build.log
-
-      - name: Upload WaterMedia API inspection
-        if: always() && (github.ref_name == 'watermedia-3.0.0.23-compat' || github.head_ref == 'watermedia-3.0.0.23-compat')
-        uses: actions/upload-artifact@v4
-        with:
-          name: watermedia-api-signatures
-          path: watermedia-api.txt
 
       - name: Upload build log
         if: always()
