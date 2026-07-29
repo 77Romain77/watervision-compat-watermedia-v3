@@ -68,6 +68,10 @@ repositories {
         url "https://www.cursemaven.com"
         content { includeGroup "curse.maven" }
     }
+    maven {
+        url "https://api.modrinth.com/maven"
+        content { includeGroup "maven.modrinth" }
+    }
     maven { url 'https://jitpack.io' }
 }
 
@@ -88,9 +92,8 @@ dependencies {
     minecraft "net.minecraftforge:forge:${minecraftversion}-${forgeversion}"
     annotationProcessor "net.fabricmc:sponge-mixin:${mixin_fabric_version}+mixin.${mixin_version}"
 
-    // WaterMedia 3.0.0.19 is currently the latest 3.x CurseForge file available through CurseMaven.
-    // The GitHub changelog may mention newer unreleased entries before a CurseForge file id exists.
-    implementation fg.deobf("curse.maven:watermedia-869524:8316156")
+    // WaterMedia 3.0.0.23 is a binary-breaking update and must be compiled explicitly.
+    implementation fg.deobf("maven.modrinth:G922NeHS:FdCZ5Rxq")
 
     // Optional at runtime. When Simple Voice Chat is installed, WaterVision cancels
     // received voice audio while a fullscreen cinematic is active.
