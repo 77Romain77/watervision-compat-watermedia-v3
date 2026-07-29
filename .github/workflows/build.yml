@@ -30,6 +30,14 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
+      - name: Inspect WaterMedia player API
+        if: github.ref_name == 'watermedia-3.0.0.23-compat' || github.head_ref == 'watermedia-3.0.0.23-compat'
+        run: |
+          curl --fail --location --retry 3 --output watermedia.jar \
+            'https://cdn.modrinth.com/data/G922NeHS/versions/FdCZ5Rxq/watermedia-3.0.0.23.jar'
+          javap -classpath watermedia.jar org.watermedia.api.media.players.MediaPlayer
+          javap -classpath watermedia.jar org.watermedia.api.media.MRL\$Status
+
       - name: Build with stacktrace
         run: |
           set -o pipefail
