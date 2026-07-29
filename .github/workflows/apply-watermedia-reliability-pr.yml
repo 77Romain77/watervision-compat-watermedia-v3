@@ -17,6 +17,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: watermedia-3.0.0.23-compat
+          fetch-depth: 0
 
       - name: Apply reliability patch
         run: python .github/scripts/apply_watermedia_reliability.py
