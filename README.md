@@ -1,235 +1,142 @@
-# WaterVision — WaterMedia 3.0.0.21 compatibility branch
+# WaterVision — WaterMedia 3.0.0.23 compatibility branch
 
-WaterVision is a Minecraft Forge 1.20.1 mod used to play fullscreen cinematic videos in-game through commands.
+WaterVision is a Minecraft Forge 1.20.1 mod used to play fullscreen cinematic videos and video overlays in-game through commands.
 
-This branch targets **WaterMedia 3.0.0.21** and adds a safer cinematic player layer for server cutscenes:
+This branch targets **WaterMedia 3.0.0.23** and keeps the TFOT cinematic improvements developed on the 3.0.0.21 branch.
 
-- WaterMedia 3.0.0.21 API compatibility.
-- Client-side cinematic volume control.
-- Pause/resume and seek controls.
-- Hold-to-skip behavior.
-- Dynamic tips overlay.
-- HTTP fallback through a local streaming proxy.
-- Persistent local video cache with remote update validation.
-- Temporary mute for Minecraft audio and received Simple Voice Chat audio.
-
-This project is not affiliated with Mr.Puzzle or PuzzleVision.
-
-## Branch status
-
-This branch is intended for:
+## Target environment
 
 ```text
 Minecraft Forge 1.20.1
-WaterMedia 3.0.0.21
-watermedia_binaries 3.0.0-rc.4
+WaterMedia 3.0.0.23
+A WaterMedia Binaries build compatible with WaterMedia 3.0.0.23
 Optional: Simple Voice Chat 1.20.1-2.6.16 / voicechat_api 2.6.13+
+Optional: RegionMusic Client with RegionMusicClientApi
 ```
 
-It was created separately from the older WaterMedia compatibility branches so the working WaterMedia `3.0.0.16` and `3.0.0.17` variants stay untouched.
-
-Expected current cinematic build tag in logs:
+The WaterMedia dependency is deliberately restricted to:
 
 ```text
-[cinematic-ui-watermedia-021-streaming-proxy-safe]
+[3.0.0.23,3.0.0.24)
 ```
 
-Expected current proxy build tag in logs:
+WaterMedia 3.0.0.22 and 3.0.0.23 introduced binary-breaking API changes. Pinning the range prevents Forge from loading this build with a future incompatible version without recompiling WaterVision.
+
+## Branch status
+
+- Forge 1.20.1 compilation: passing.
+- WaterMedia 3.0.0.23 API migration: complete.
+- Runtime validation in the TFOT modpack: required before production deployment.
+- Older WaterMedia compatibility branches remain untouched.
+
+Expected fullscreen cinematic build tag:
+
+```text
+[cinematic-ui-watermedia-023-streaming-proxy-safe]
+```
+
+Expected overlay build tag:
+
+```text
+[overlay-watermedia-023-debug]
+```
+
+Expected proxy build tag:
 
 ```text
 [streaming-proxy-003]
 ```
 
-## What changed in this branch
+## WaterMedia 3.0.0.23 migration
 
-### WaterMedia 3.0.0.21 API adaptation
+The fullscreen player and overlay now use the current API:
 
-WaterMedia changed a lot after `3.0.0.17`, especially around MRL state handling, player lifecycle, audio/video startup, native release safety, and no-frame decoder failures.
+- `MediaAPI.mrl(URI)` instead of the removed `MediaAPI.getMRL(URI)`.
+- `MediaAPI.createPlayer(...)` for player creation.
+- `MediaAPI.glEngine(Thread, Executor)` instead of `GLEngine.Builder`.
+- `MediaAPI.alEngine()` instead of `ALEngine.buildDefault()`.
+- The boolean results returned by `start()` and `startPaused()` are checked.
+- A refused fullscreen startup enters the existing proxy/cache fallback chain.
+- A refused overlay startup closes the overlay cleanly and reports the failure.
 
-This branch adapts WaterVision to the newer API:
+WaterMedia now owns the OpenGL state handling used by its video engine. WaterVision no longer provides manual `GlStateManager` callbacks to `GLEngine`.
 
-- Uses `MediaAPI.getMRL(URI)`.
-- Uses `MRL.status()` instead of the old `ready()` / `hasError()` flow.
-- Creates players through `MediaAPI.createPlayer(MRL, Supplier<GFXEngine>, Supplier<SFXEngine>)`.
-- Handles `MRL.Status.FETCHING`, `LOADED`, `ERROR`, `BLOCKED`, `EXPIRED`, and `FORGOTTEN` properly.
-- Keeps one guarded retry only for the old edge case where a player reaches `ENDED`/`STOPPED` before rendering the first texture.
-- Removes the private `ensureDecodeThreads()` recovery workaround used for WaterMedia `3.0.0.17` testing.
-- Keeps a `20 tick` delayed resume for safer startup.
+## Fullscreen cinematic features
 
-In successful logs, you should see:
+### HTTP proxy and persistent cache
 
-```text
-WaterVision delayed resume armed [cinematic-ui-watermedia-021-streaming-proxy-safe]
-WaterVision player resume requested [cinematic-ui-watermedia-021-streaming-proxy-safe] after 20 ticks
-WaterVision first frame ready [cinematic-ui-watermedia-021-streaming-proxy-safe]
-WaterVision first video texture rendered [cinematic-ui-watermedia-021-streaming-proxy-safe]
-```
-
-### HTTP fallback, local proxy, and persistent cache
-
-Some direct `https://...mp4` URLs can fail in WaterMedia 3.0.0.21 / FFmpeg with `HTTP 400 Bad Request`, even when the same file exists and normal browser/curl requests work.
-
-WaterVision now uses a safer fallback chain:
+WaterVision keeps the existing fallback chain for direct remote videos:
 
 ```text
-1. Try the original remote URL normally.
-2. If WaterMedia fails before the first texture, validate the local cache.
-3. If the cached file is valid, play the local file directly.
-4. If the cache is missing or stale, start a local streaming proxy on 127.0.0.1.
-5. Play the video through the local proxy immediately.
-6. Download the full file into cache in the background.
-7. If the proxy fails before playback starts, keep the screen open and wait for the full cache download.
-8. When the cache download is complete, play the local file.
+1. Try the original remote URL.
+2. If playback fails before the first frame, inspect the local cache.
+3. Play a valid cached file immediately when available.
+4. Otherwise start the local 127.0.0.1 streaming proxy.
+5. Download the full video into the persistent cache in the background.
+6. If proxy playback also fails, wait for the complete local file and retry it.
 ```
 
-The local cache is stored in:
+The cache is stored in:
 
 ```text
 <minecraft folder>/watervision-cache/
 ```
 
-Cached videos are persistent. They are not deleted when Minecraft closes.
-
-To detect updated videos without changing the URL, WaterVision stores and validates metadata:
+Cached files are validated with the available remote metadata:
 
 - `ETag`
 - `Last-Modified`
 - `Content-Length`
 
-If the server file changes but the URL stays the same, WaterVision detects the stale cache, deletes it, and loads the newer version.
+Incomplete downloads are rejected.
 
-Downloads are also checked against `Content-Length` when available. Incomplete downloads are rejected and are not promoted to valid cache files.
+### Playback controls
 
-Useful fallback log entries include:
+When `allow_controls = true`:
 
-```text
-WaterVision remote playback failed before first texture
-WaterVision cache hit validated
-WaterVision cache stale
-WaterVision streaming proxy started
-WaterVision streaming proxy route created
-WaterVision streaming proxy fallback ready
-WaterVision downloading video to cache
-WaterVision cache download completed
-WaterVision background cache download completed
-WaterVision streaming proxy failed, waiting for full cache download fallback
-```
+- `Space`: pause or resume.
+- `Arrow Right`: seek forward by 5 seconds.
+- `Arrow Left`: seek backward by 5 seconds.
 
-The proxy can log `Connection reset by peer` or `Une connexion établie a été abandonnée...` when WaterMedia closes a range request early, seeks, skips, or stops playback. This is usually harmless as long as the video continues playing and `first frame ready` appears.
+A short cooldown prevents excessive seek requests.
 
-### Exclusive cinematic audio
+### Cinematic volume
 
-While a fullscreen `VisionScreen` cinematic is active, WaterVision keeps only the video audio audible.
+- `Arrow Up`: increase the client cinematic volume.
+- `Arrow Down`: decrease the client cinematic volume.
+- The client preference is stored and reused for later cinematics.
+- The command volume remains the server-provided base volume.
 
-Minecraft audio is muted in memory at the sound engine level, including:
-
-- Music.
-- Ambient sounds.
-- Blocks, mobs, players, weather, records, and UI sounds.
-- New sounds started while the cinematic is already playing.
-
-Existing Minecraft sounds are paused when the cinematic opens and resumed when it closes.
-
-When Simple Voice Chat is installed, WaterVision registers an optional voice chat API plugin and cancels received `ClientReceiveSoundEvent` audio during the cinematic. This mutes proximity voice, group voice, and received audio from voice chat addons while keeping the local microphone behavior unchanged.
-
-The mute state is temporary and exists only in memory:
-
-- Minecraft volume options are not changed.
-- Nothing is written to `options.txt`.
-- Normal close, video end, skip, failure, disconnection, or unexpected screen replacement restores game audio.
-- A full client crash destroys the temporary state, so the next launch starts with the player's normal audio settings.
-
-Useful log entries:
-
-```text
-WaterVision cinematic audio mute: active=true
-WaterVision cinematic audio mute: active=false
-```
-
-### Cinematic volume control
-
-Players can adjust the video volume during a cinematic:
-
-- `Arrow Up`: increase cinematic volume.
-- `Arrow Down`: decrease cinematic volume.
-- A small volume overlay appears briefly when the value changes.
-- The player volume is saved client-side and reused for later cinematics.
-- The command volume remains the server-side base volume.
-
-Effective volume is calculated like this:
+Effective volume:
 
 ```text
 command_volume * client_cinematic_volume / 100
 ```
 
-Example: if the command sends volume `80` and the player volume is `50%`, the effective video volume is `40`.
+### Safe skip
 
-### Optional playback controls
+When `allow_exit = true`, the player must hold `Escape` for about two seconds. A progress indicator is displayed while holding the key.
 
-The `allow_controls` command argument is used.
+### Dynamic tips
 
-When `allow_controls = true`, players can control the cinematic:
+The tips panel adapts to the enabled controls and can be toggled with `K`.
 
-- `Space`: pause/resume the video.
-- `Arrow Right`: seek forward by 5 seconds.
-- `Arrow Left`: seek backward by 5 seconds.
+### Exclusive cinematic audio
 
-This branch uses the current WaterMedia control methods directly:
+While a fullscreen cinematic is active:
 
-- `paused()`
-- `pause()`
-- `resume()`
-- `togglePlay()` fallback
-- `canSeek()`
-- `forward()`
-- `rewind()`
-- `skipTime(long)` fallback
+- existing Minecraft sounds are paused;
+- new Minecraft sounds are muted at the sound-engine level;
+- received Simple Voice Chat audio is cancelled when the optional API is present;
+- RegionMusic is paused through `RegionMusicClientApi.setPaused("watervision", true)` when a compatible RegionMusic build is installed.
 
-Visual overlays:
+At the end of the cinematic, RegionMusic receives:
 
-- `Pause` is shown near the bottom center while the video is paused.
-- `+5s` appears on the right side when seeking forward.
-- `-5s` appears on the left side when seeking backward.
-
-A **5-tick seek cooldown** is applied to avoid sending too many seek requests to WaterMedia too quickly.
-
-When `allow_controls = false`, pause and seek inputs are ignored and the related tips are hidden.
-
-### Safer skip behavior
-
-The `allow_exit` command argument controls whether the player can skip the video.
-
-When `allow_exit = true`:
-
-- The player must hold `Escape` to skip.
-- A skip progress overlay appears in the bottom-right corner.
-- The skip triggers after about 2 seconds.
-
-When `allow_exit = false`:
-
-- `Escape` does not skip the cinematic.
-- The skip tip is not shown.
-
-This avoids accidental skips from a single `Escape` press.
-
-### Cinematic tips overlay
-
-A small tips panel is displayed when the cinematic starts:
-
-```text
-Masquer : touche K
-Régler le volume : ↑ / ↓
-Pause : Espace
-Avancer / reculer : ← / →
-Passer : maintenir Échap
+```java
+RegionMusicClientApi.setPaused("watervision", false);
 ```
 
-The panel is dynamic:
-
-- It auto-hides after 10 seconds.
-- `K` toggles the panel on/off.
-- Pause/seek tips are shown only when `allow_controls = true`.
-- Skip tips are shown only when `allow_exit = true`.
+The integration is reflection-based, so RegionMusic remains optional. No Minecraft volume value is written to `options.txt`.
 
 ## Commands
 
@@ -239,39 +146,11 @@ The panel is dynamic:
 /video <"url"> <targets> [volume] [speed] [stretch_video] [game_fade_duration] [video_fade_duration] [allow_controls] [allow_exit]
 ```
 
-Plays a fullscreen video for the selected target players.
-
-Default values:
-
-```text
-volume: 100
-speed: 1.0
-stretch_video: false
-game_fade_duration: 20.0
-video_fade_duration: 20.0
-allow_controls: true
-allow_exit: true
-```
-
 Example:
 
 ```text
 /video "https://example.com/video.mp4" @a 100 1.0 false 20.0 20.0 true true
 ```
-
-Arguments:
-
-- `url`: direct URL of the video to play. It should be quoted.
-- `targets`: player(s) who should receive the video.
-- `volume`: base server-side volume.
-- `speed`: playback speed.
-- `stretch_video`: stretches the video to the full screen if `true`; keeps aspect ratio if `false`.
-- `game_fade_duration`: fade duration from game to video screen, in ticks.
-- `video_fade_duration`: fade duration from black screen to video, in ticks.
-- `allow_controls`: enables/disables pause and seek controls.
-- `allow_exit`: enables/disables skip by holding `Escape`.
-
-Requires OP permission level 4 by default.
 
 ### `/videoclient`
 
@@ -279,56 +158,36 @@ Requires OP permission level 4 by default.
 /videoclient <"url">
 ```
 
-Plays a video only on the local client, without server interaction.
+Plays a fullscreen video only on the local client.
 
-Example:
+## Runtime validation checklist
 
-```text
-/videoclient "https://example.com/video.mp4"
-```
+Before deploying this branch, test:
 
-## Player controls summary
+1. Client startup with WaterMedia 3.0.0.23 and its compatible binaries.
+2. A direct remote MP4.
+3. A cached MP4.
+4. Proxy fallback and complete-download fallback.
+5. Pause, resume, seek, volume and hold-to-skip.
+6. Natural video completion and forced closure.
+7. Several consecutive cinematics to verify resource release.
+8. The video overlay.
+9. Minecraft audio restoration.
+10. Simple Voice Chat mute and restoration.
+11. RegionMusic pause and exact resume position.
+12. Oculus/Embeddium rendering with the TFOT client pack.
 
-| Key | Behavior | Condition |
-| --- | --- | --- |
-| `K` | Show/hide tips | Always available during the video |
-| `Arrow Up` | Increase cinematic volume | Always available during the video |
-| `Arrow Down` | Decrease cinematic volume | Always available during the video |
-| `Space` | Pause/resume | Only if `allow_controls = true` |
-| `Arrow Right` | Seek forward 5 seconds | Only if `allow_controls = true` and WaterMedia reports `canSeek()` |
-| `Arrow Left` | Seek backward 5 seconds | Only if `allow_controls = true` and WaterMedia reports `canSeek()` |
-| Hold `Escape` | Skip video | Only if `allow_exit = true` |
-
-## Debugging
-
-This branch logs the active build tag when a cinematic starts:
+Useful successful log entries include:
 
 ```text
-[cinematic-ui-watermedia-021-streaming-proxy-safe]
+WaterVision player created [cinematic-ui-watermedia-023-streaming-proxy-safe]
+WaterVision player resume requested [cinematic-ui-watermedia-023-streaming-proxy-safe]
+WaterVision first frame ready [cinematic-ui-watermedia-023-streaming-proxy-safe]
+WaterVision first video texture rendered [cinematic-ui-watermedia-023-streaming-proxy-safe]
+WaterVision RegionMusic compatibility enabled
+WaterVision RegionMusic pause: active=true
+WaterVision RegionMusic pause: active=false
 ```
-
-Useful WaterVision log entries include:
-
-- `screen opened`
-- `player created`
-- `delayed resume armed`
-- `player resume requested`
-- `first frame ready`
-- `first video texture rendered`
-- `seek control`
-- `playback control`
-- `skip hold completed`
-- `player entered ERROR before first texture`
-- `remote playback failed before first texture`
-- `cache hit validated`
-- `cache stale`
-- `streaming proxy started`
-- `streaming proxy fallback ready`
-- `background cache download completed`
-- `cinematic audio mute: active=true`
-- `cinematic audio mute: active=false`
-
-If a video fails to start, check whether the failure happens on the original remote URL, the proxy URL, or the cached local file.
 
 ## License
 
