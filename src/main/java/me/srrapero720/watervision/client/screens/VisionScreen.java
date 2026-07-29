@@ -101,7 +101,7 @@ public class VisionScreen extends Screen {
         this.gameBackground = new FadeBackground(gameFadeDuration);
         this.videoBackground = new FadeBackground(videoFadeDuration);
         this.videoBackground.forceFadeIn();
-        this.mrl = MediaAPI.getMRL(this.playbackUri);
+        this.mrl = MediaAPI.mrl(this.playbackUri);
         Minecraft.getInstance().getSoundManager().pause();
         WaterVision.LOGGER.info("WaterVision screen opened [{}] for {}", BUILD_TAG, this.uri);
         WaterVision.LOGGER.info("WaterVision cinematic volume [{}]: command={} client={} effective={} controls={} exit={}", BUILD_TAG, this.commandVolume, this.clientVolume, this.effectiveVolume(), this.controls, this.exit);
@@ -115,7 +115,7 @@ public class VisionScreen extends Screen {
 
         if (mrlStatus == MRL.Status.EXPIRED || mrlStatus == MRL.Status.FORGOTTEN) {
             WaterVision.LOGGER.warn("WaterVision MRL renewed [{}]: status={}, uri={}", BUILD_TAG, mrlStatus, this.playbackUri);
-            this.mrl = MediaAPI.getMRL(this.playbackUri);
+            this.mrl = MediaAPI.mrl(this.playbackUri);
             return;
         }
 
@@ -401,7 +401,7 @@ public class VisionScreen extends Screen {
         final String base = this.playbackUri.toString();
         final String retryUrl = base + (base.contains("?") ? "&" : "?") + "wvRetry=" + this.playerRecreateAttempts + "&wvTime=" + System.nanoTime();
         this.playbackUri = URI.create(retryUrl);
-        this.mrl = MediaAPI.getMRL(this.playbackUri);
+        this.mrl = MediaAPI.mrl(this.playbackUri);
         this.resetPlayerStateForNewMrl();
         return true;
     }
@@ -458,7 +458,7 @@ public class VisionScreen extends Screen {
         try {
             final URI fallbackUri = completedFuture.join();
             this.playbackUri = fallbackUri;
-            this.mrl = MediaAPI.getMRL(this.playbackUri);
+            this.mrl = MediaAPI.mrl(this.playbackUri);
             this.failedToCreatePlayer = false;
             this.status = Status.OPENING_GAME;
             this.resetPlayerStateForNewMrl();
