@@ -16,12 +16,14 @@ public class WaterVisionVoicechatPlugin implements VoicechatPlugin {
 
     @Override
     public void registerEvents(final EventRegistration registration) {
-        registration.registerEvent(ClientReceiveSoundEvent.class, this::onReceiveSound, 1000);
+        registration.registerEvent(ClientReceiveSoundEvent.EntitySound.class, this::onReceiveSound, 1000);
+        registration.registerEvent(ClientReceiveSoundEvent.LocationalSound.class, this::onReceiveSound, 1000);
+        registration.registerEvent(ClientReceiveSoundEvent.StaticSound.class, this::onReceiveSound, 1000);
     }
 
     private void onReceiveSound(final ClientReceiveSoundEvent event) {
         if (CinematicAudioMute.isActive()) {
-            event.cancel();
+            event.setRawAudio(null);
         }
     }
 }
