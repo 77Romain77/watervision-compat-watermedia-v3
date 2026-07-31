@@ -22,8 +22,13 @@ public class WaterVisionVoicechatPlugin implements VoicechatPlugin {
     }
 
     private void onReceiveSound(final ClientReceiveSoundEvent event) {
-        if (CinematicAudioMute.isActive()) {
-            event.setRawAudio(null);
+        if (!CinematicAudioMute.isActive()) {
+            return;
+        }
+
+        final short[] rawAudio = event.getRawAudio();
+        if (rawAudio.length > 0) {
+            event.setRawAudio(new short[rawAudio.length]);
         }
     }
 }
