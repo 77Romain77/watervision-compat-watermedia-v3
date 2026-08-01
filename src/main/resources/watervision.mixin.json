@@ -12,7 +12,8 @@
     "IntegratedServerMixin",
     "MinecraftMixin",
     "SoundEngineMixin",
-    "VisionScreenAudioMixin"
+    "VisionScreenAudioMixin",
+    "VisionScreenDecoderFallbackMixin"
   ],
   "injectors": {
     "defaultRequire": 1
