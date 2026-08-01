@@ -16,50 +16,50 @@ import org.watermedia.api.media.players.MediaPlayer;
 
 import java.net.URI;
 
-@Mixin(value = VisionScreen.class, remap = false)
+@Mixin(VisionScreen.class)
 public abstract class VisionScreenDecoderFallbackMixin {
 
     /** Five seconds at 20 TPS: enough for metadata and the first GPU upload. */
     @Unique
     private static final int WATERVISION_SOFTWARE_FALLBACK_TICKS = 100;
 
-    @Shadow
+    @Shadow(remap = false)
     private MediaPlayer videoPlayer;
 
-    @Shadow
+    @Shadow(remap = false)
     private int waitingTicks;
 
-    @Shadow
+    @Shadow(remap = false)
     private VisionScreen.Status status;
 
-    @Shadow
+    @Shadow(remap = false)
     private URI playbackUri;
 
-    @Shadow
+    @Shadow(remap = false)
     private MRL mrl;
 
-    @Shadow
+    @Shadow(remap = false)
     private int mrlWaitTicks;
 
-    @Shadow
+    @Shadow(remap = false)
     private boolean mrlReloadAttempted;
 
-    @Shadow
+    @Shadow(remap = false)
     private boolean failedToCreatePlayer;
 
-    @Shadow
+    @Shadow(remap = false)
     private int playerRecreateAttempts;
 
     @Unique
     private boolean watervision$softwareFallbackAttempted;
 
-    @Invoker("releasePlayerOnly")
+    @Invoker(value = "releasePlayerOnly", remap = false)
     protected abstract void watervision$releasePlayerOnly();
 
-    @Invoker("resetPlayerStateForNewMrl")
+    @Invoker(value = "resetPlayerStateForNewMrl", remap = false)
     protected abstract void watervision$resetPlayerStateForNewMrl();
 
-    @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "tick()V", at = @At("HEAD"), cancellable = true)
     private void watervision$retryWithoutHardwareDecoder(final CallbackInfo ci) {
         if (this.status != VisionScreen.Status.OPENING_GAME
                 || this.videoPlayer == null
