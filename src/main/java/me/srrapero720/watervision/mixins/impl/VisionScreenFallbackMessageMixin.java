@@ -45,19 +45,34 @@ public abstract class VisionScreenFallbackMessageMixin {
             );
             if (message == null) return;
 
+            final ClickEvent clickEvent = new ClickEvent(ClickEvent.Action.OPEN_URL, url);
             final String hoverText = WaterVisionServerConfig.FALLBACK_HOVER_TEXT.get();
-            message.withStyle(style -> style
-                    .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url))
-                    .withHoverEvent(new HoverEvent(
-                            HoverEvent.Action.SHOW_TEXT,
-                            Component.literal(hoverText == null ? "" : hoverText)
-                    ))
+            final HoverEvent hoverEvent = new HoverEvent(
+                    HoverEvent.Action.SHOW_TEXT,
+                    Component.literal(hoverText == null ? "" : hoverText)
             );
+            this.watervision$applyLinkToWholeMessage(message, clickEvent, hoverEvent);
 
             minecraft.gui.getChat().addMessage(message);
             WaterVision.LOGGER.debug("WaterVision browser fallback message displayed for {}", url);
         } catch (final Exception exception) {
             WaterVision.LOGGER.error("Failed to display WaterVision browser fallback message for {}", this.uri, exception);
+        }
+    }
+
+    @Unique
+    private void watervision$applyLinkToWholeMessage(
+            final Component component,
+            final ClickEvent clickEvent,
+            final HoverEvent hoverEvent
+    ) {
+        if (component instanceof MutableComponent mutable) {
+            mutable.withStyle(style -> style
+                    .withClickEvent(clickEvent)
+                    .withHoverEvent(hoverEvent));
+        }
+        for (final Component sibling : component.getSiblings()) {
+            this.watervision$applyLinkToWholeMessage(sibling, clickEvent, hoverEvent);
         }
     }
 
