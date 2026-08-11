@@ -9,58 +9,72 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
-import org.watermedia.api.player.PlayerAPI;
-import org.watermedia.api.player.videolan.VideoPlayer;
+import org.watermedia.api.media.MRL;
+import org.watermedia.api.media.MediaAPI;
+import org.watermedia.api.media.engines.ALEngine;
+import org.watermedia.api.media.engines.GLEngine;
+import org.watermedia.api.media.players.MediaPlayer;
 
 import java.net.URI;
+import java.util.Objects;
 
 @Mod.EventBusSubscriber(modid = WaterVision.ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public class VisionOverlay {
+    private static final String BUILD_TAG = "overlay-watermedia-023-debug";
     private static final int PADDING = 8;
-    private static VideoPlayer player;
+    private static MediaPlayer player;
+    private static MRL mrl;
+    private static TextureWrapper textureWrapper;
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "overlay_texture");
     static URI uri;
     static URI activeUri;
+    private static boolean failureReported;
 
     public static void onClientPause(boolean pause) {
-        if (player != null && player.isPaused() != pause) {
-            player.setPauseMode(pause);
+        if (player != null) {
+            player.pause(pause);
         }
     }
 
     @SubscribeEvent
     public static void onRenderOverlayPost(final RenderGuiOverlayEvent.Pre e) {
-        if (uri != null && player == null) {
-            player = new VideoPlayer(PlayerAPI.getFactory(), Minecraft.getInstance());
-            Minecraft.getInstance().getTextureManager().register(TEXTURE, new TextureWrapper(player.texture()));
-            player.start(uri);
+        if (uri == null) {
+            releaseOverlay();
+            return;
+        }
+
+        if (!Objects.equals(activeUri, uri)) {
+            releaseOverlay();
             activeUri = uri;
+            mrl = MediaAPI.mrl(uri);
+            failureReported = false;
+            WaterVision.LOGGER.info("WaterVision overlay opened [{}] for {}", BUILD_TAG, activeUri);
+        }
+
+        if (player == null) {
+            tryCreatePlayer();
         }
 
         if (player == null) {
             return;
         }
 
-        if (player.isBroken()) {
-            Minecraft.getInstance().getChatListener().handleSystemMessage(Component.literal("Failed to open a video overlay"), true);
-            player.release();
-            player = null;
+        if (player.error()) {
+            reportFailure("Failed to open a video overlay");
+            WaterVision.LOGGER.error("WaterVision overlay player entered ERROR [{}]: status={}, texture={}, size={}x{}, uri={}",
+                    BUILD_TAG, player.status(), player.texture(), player.width(), player.height(), activeUri);
+            releaseOverlay();
+            uri = null;
             return;
         }
 
-        if (uri == null && activeUri != null) {
-            player.release();
-            player = null;
-            activeUri = null;
+        if (player.ended()) {
+            releaseOverlay();
+            uri = null;
+            return;
         }
 
-        if (activeUri != uri) {
-            player.start(uri);
-            activeUri = uri;
-        }
-
-        if (player.isSafeUse() && player.isPlaying()) {
-            player.preRender();
+        if (player.texture() != 0 && player.width() > 0 && player.height() > 0 && (player.playing() || player.buffering() || player.paused())) {
             final GuiGraphics graphics = e.getGuiGraphics();
 
             final int screenWidth = graphics.guiWidth();
@@ -74,19 +88,82 @@ public class VisionOverlay {
             height -= PADDING;
 
             WaterVisionClient.internal$blit(graphics, TEXTURE, 1.0f, x, y, 0, 0, width, height);
-        } else if (player.isSafeUse() && player.isEnded()) {
-            uri = null;
-            activeUri = null;
-            player.release();
-            player = null;
         }
     }
 
-    public static void onClientDisconnect() {
+    private static void tryCreatePlayer() {
+        if (mrl == null) {
+            return;
+        }
+
+        final MRL.Status mrlStatus = mrl.status();
+        if (mrlStatus == MRL.Status.FETCHING) {
+            return;
+        }
+
+        if (mrlStatus == MRL.Status.EXPIRED || mrlStatus == MRL.Status.FORGOTTEN) {
+            WaterVision.LOGGER.warn("WaterVision overlay MRL renewed [{}]: status={}, uri={}", BUILD_TAG, mrlStatus, activeUri);
+            mrl = MediaAPI.mrl(activeUri);
+            return;
+        }
+
+        if (mrlStatus != MRL.Status.LOADED) {
+            reportFailure("Failed to load a video overlay");
+            WaterVision.LOGGER.error("WaterVision overlay MRL failed [{}]: status={}, exception={}, uri={}", BUILD_TAG, mrlStatus, mrl.exception(), activeUri);
+            releaseOverlay();
+            uri = null;
+            return;
+        }
+
+        player = MediaAPI.createPlayer(mrl, VisionOverlay::createGfxEngine, VisionOverlay::createSfxEngine);
+        if (player == null) {
+            reportFailure("Failed to create a video overlay player");
+            WaterVision.LOGGER.error("WaterMedia v3 failed to create an overlay player [{}] for: {}", BUILD_TAG, activeUri);
+            releaseOverlay();
+            uri = null;
+            return;
+        }
+
+        if (!player.start()) {
+            reportFailure("Failed to start a video overlay player");
+            WaterVision.LOGGER.error("WaterMedia refused overlay start [{}] for {}", BUILD_TAG, activeUri);
+            releaseOverlay();
+            uri = null;
+            return;
+        }
+
+        textureWrapper = new TextureWrapper(() -> (int) player.texture());
+        Minecraft.getInstance().getTextureManager().register(TEXTURE, textureWrapper);
+        WaterVision.LOGGER.info("WaterVision overlay player started [{}] for {}", BUILD_TAG, activeUri);
+    }
+
+    private static GLEngine createGfxEngine() {
+        return MediaAPI.glEngine(Thread.currentThread(), Minecraft.getInstance());
+    }
+
+    private static ALEngine createSfxEngine() {
+        return MediaAPI.alEngine();
+    }
+
+    private static void reportFailure(final String message) {
+        if (!failureReported) {
+            Minecraft.getInstance().getChatListener().handleSystemMessage(Component.literal(message), true);
+            failureReported = true;
+        }
+    }
+
+    private static void releaseOverlay() {
         if (player != null) {
             player.release();
         }
         player = null;
+        mrl = null;
+        textureWrapper = null;
+        activeUri = null;
+    }
+
+    public static void onClientDisconnect() {
+        releaseOverlay();
         uri = null;
     }
 }

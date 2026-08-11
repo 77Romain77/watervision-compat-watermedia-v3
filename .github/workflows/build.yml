@@ -1,0 +1,49 @@
+name: Build WaterVision
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - watermedia-v3-compat
+      - watermedia-3.0.0.17-compat
+      - watermedia-3.0.0.21-compat
+      - watermedia-3.0.0.23-compat
+  pull_request:
+    branches:
+      - 1.20.1
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
+
+      - name: Build with stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon clean build --stacktrace 2>&1 | tee build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watervision-build-log
+          path: build.log
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: watervision-watermedia-v3-test
+          path: build/libs/*.jar

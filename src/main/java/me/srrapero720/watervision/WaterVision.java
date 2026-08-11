@@ -1,7 +1,7 @@
 package me.srrapero720.watervision;
 
-import me.srrapero720.watervision.client.render.TextureWrapper;
 import me.srrapero720.watervision.common.commands.VisionCommands;
+import me.srrapero720.watervision.common.config.WaterVisionServerConfig;
 import me.srrapero720.watervision.common.network.VisionNetwork;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
@@ -11,14 +11,15 @@ import net.minecraftforge.client.event.RegisterClientCommandsEvent;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.MarkerManager;
-import org.watermedia.api.image.ImageAPI;
 
 @Mod(WaterVision.ID)
 @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.FORGE)
@@ -29,7 +30,9 @@ public class WaterVision {
     public static final ResourceLocation LOADING_ANIM_TEXTURE = ResourceLocation.tryBuild(ID, "loading_animation");
     private static int ticks = 0;
 
-    public WaterVision() {}
+    public WaterVision() {
+        ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, WaterVisionServerConfig.SPEC, "watervision-server.toml");
+    }
 
     @SubscribeEvent
     public static void onCommandsRegister(final RegisterCommandsEvent event) {
@@ -62,9 +65,6 @@ public class WaterVision {
         @OnlyIn(Dist.CLIENT)
         public static void clientSetup(final FMLClientSetupEvent event) {
             LOGGER.debug("Client setup...");
-            event.enqueueWork(() -> {
-                Minecraft.getInstance().getTextureManager().register(LOADING_ANIM_TEXTURE, new TextureWrapper.Renderer(ImageAPI.loadingGif("watervision")));
-            });
         }
     }
 
