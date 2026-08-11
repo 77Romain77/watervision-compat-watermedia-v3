@@ -5,11 +5,13 @@ import net.minecraftforge.common.ForgeConfigSpec;
 public final class WaterVisionServerConfig {
     public static final String DEFAULT_FALLBACK_MESSAGE_JSON = "[{\"text\":\"\\n\"},{\"text\":\"[\",\"color\":\"gray\"},{\"text\":\"ᴄɪɴᴇᴍᴀᴛɪǫᴜᴇ\",\"bold\":true,\"color\":\"#D6A84B\"},{\"text\":\"] \",\"color\":\"gray\"},{\"text\":\"Un problème de lecture ?\",\"color\":\"gray\"},{\"text\":\"\\n\"},{\"text\":\"Pour regarder la vidéo dans votre navigateur, \",\"color\":\"gray\"},{\"text\":\"cliquez ici\",\"color\":\"#5DADE2\",\"bold\":true},{\"text\":\".\",\"color\":\"gray\"},{\"text\":\"\\n\"}]";
     public static final String DEFAULT_FALLBACK_HOVER_TEXT = "Ouvrir la cinématique dans le navigateur";
+    public static final String DEFAULT_FALLBACK_HOVER_COLOR = "#5DADE2";
 
     public static final ForgeConfigSpec SPEC;
     public static final ForgeConfigSpec.BooleanValue FALLBACK_MESSAGE_ENABLED;
     public static final ForgeConfigSpec.ConfigValue<String> FALLBACK_MESSAGE_JSON;
     public static final ForgeConfigSpec.ConfigValue<String> FALLBACK_HOVER_TEXT;
+    public static final ForgeConfigSpec.ConfigValue<String> FALLBACK_HOVER_COLOR;
 
     static {
         final ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
@@ -35,8 +37,25 @@ public final class WaterVisionServerConfig {
                 .comment("Texte affiché au survol du message cliquable.")
                 .define("hover_text", DEFAULT_FALLBACK_HOVER_TEXT, value -> value instanceof String);
 
+        FALLBACK_HOVER_COLOR = builder
+                .comment(
+                        "Couleur du texte affiché au survol, au format hexadécimal #RRGGBB.",
+                        "Exemple : #5DADE2"
+                )
+                .define("hover_color", DEFAULT_FALLBACK_HOVER_COLOR, WaterVisionServerConfig::isValidHexColor);
+
         builder.pop();
         SPEC = builder.build();
+    }
+
+    private static boolean isValidHexColor(final Object value) {
+        if (!(value instanceof String color) || color.length() != 7 || color.charAt(0) != '#') return false;
+        try {
+            Integer.parseInt(color.substring(1), 16);
+            return true;
+        } catch (final NumberFormatException ignored) {
+            return false;
+        }
     }
 
     private WaterVisionServerConfig() {}
