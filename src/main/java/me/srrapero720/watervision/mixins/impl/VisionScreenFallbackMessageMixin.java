@@ -8,6 +8,7 @@ import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.TextColor;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -47,9 +48,13 @@ public abstract class VisionScreenFallbackMessageMixin {
 
             final ClickEvent clickEvent = new ClickEvent(ClickEvent.Action.OPEN_URL, url);
             final String hoverText = WaterVisionServerConfig.FALLBACK_HOVER_TEXT.get();
+            final TextColor hoverColor = this.watervision$parseHoverColor(
+                    WaterVisionServerConfig.FALLBACK_HOVER_COLOR.get()
+            );
             final HoverEvent hoverEvent = new HoverEvent(
                     HoverEvent.Action.SHOW_TEXT,
                     Component.literal(hoverText == null ? "" : hoverText)
+                            .withStyle(style -> style.withColor(hoverColor))
             );
             this.watervision$applyLinkToWholeMessage(message, clickEvent, hoverEvent);
 
@@ -74,6 +79,18 @@ public abstract class VisionScreenFallbackMessageMixin {
         for (final Component sibling : component.getSiblings()) {
             this.watervision$applyLinkToWholeMessage(sibling, clickEvent, hoverEvent);
         }
+    }
+
+    @Unique
+    private TextColor watervision$parseHoverColor(final String configuredColor) {
+        try {
+            if (configuredColor != null && configuredColor.length() == 7 && configuredColor.charAt(0) == '#') {
+                return TextColor.fromRgb(Integer.parseInt(configuredColor.substring(1), 16));
+            }
+        } catch (final NumberFormatException exception) {
+            WaterVision.LOGGER.warn("Invalid fallback_message.hover_color in WaterVision server config; using the default color", exception);
+        }
+        return TextColor.fromRgb(Integer.parseInt(WaterVisionServerConfig.DEFAULT_FALLBACK_HOVER_COLOR.substring(1), 16));
     }
 
     @Unique
