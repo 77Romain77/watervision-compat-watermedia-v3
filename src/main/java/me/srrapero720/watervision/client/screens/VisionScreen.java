@@ -827,6 +827,18 @@ public class VisionScreen extends Screen {
         super.onClose();
     }
 
+    @Override
+    public void removed() {
+        // Screen replacement/disconnection may bypass onClose and its fade-out.
+        // Keep the existing audio lifecycle hooks; only release this screen's work.
+        if (!this.released) {
+            this.cancelLoading();
+            this.releasePlayerOnly();
+            this.released = true;
+        }
+        super.removed();
+    }
+
     private void closeAndRelease() {
         if (this.released) return;
         this.cancelLoading();
