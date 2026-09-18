@@ -156,6 +156,7 @@ public final class NetworkRegressionTest {
             slowProxy = VisionStreamingProxy.proxy(URI.create(base + "/slow.mp4"));
             var streaming = http.send(HttpRequest.newBuilder(slowProxy).build(), HttpResponse.BodyHandlers.ofInputStream());
             check(slowStarted.await(3, TimeUnit.SECONDS), "Slow transfers did not start");
+            cache.cancel();
             download.interrupt();
             VisionStreamingProxy.release(slowProxy);
             streaming.body().close();

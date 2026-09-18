@@ -622,6 +622,7 @@ public class VisionScreen extends Screen {
     }
 
     private void cancelLoading() {
+        this.mediaCache.cancel();
         if (this.cacheTask != null) this.cacheTask.cancel(true);
         this.cacheTask = null;
         this.cacheDownloadFuture = null;

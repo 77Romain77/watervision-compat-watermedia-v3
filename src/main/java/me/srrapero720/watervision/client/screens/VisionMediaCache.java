@@ -32,6 +32,25 @@ final class VisionMediaCache {
         return thread;
     });
     private final Path directory;
+    private volatile boolean cancelled;
+    private InputStream activeBody;
+
+    synchronized void cancel() {
+        this.cancelled = true;
+        if (this.activeBody != null) {
+            try { this.activeBody.close(); } catch (final IOException ignored) { }
+        }
+    }
+
+    private synchronized void attach(final InputStream body) throws IOException, InterruptedException {
+        if (this.cancelled) {
+            body.close();
+            throw new InterruptedException("Video download cancelled");
+        }
+        this.activeBody = body;
+    }
+
+    private synchronized void detach() { this.activeBody = null; }
 
     VisionMediaCache(final Path directory) {
         this.directory = directory;
@@ -87,6 +106,7 @@ final class VisionMediaCache {
             // Own the file stream on this worker. ofFile can create/write the file after
             // send() has been interrupted, racing with cleanup on cancellation.
             try (InputStream input = response.body()) {
+                this.attach(input);
                 if (response.statusCode() != 200) {
                     throw new IOException("HTTP " + response.statusCode() + " while downloading " + remoteUri);
                 }
@@ -97,12 +117,12 @@ final class VisionMediaCache {
                     final byte[] buffer = new byte[64 * 1024];
                     int count;
                     while ((count = input.read(buffer)) != -1) {
-                        if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Video download cancelled");
+                        if ((this.cancelled || Thread.currentThread().isInterrupted())) throw new InterruptedException("Video download cancelled");
                         output.write(buffer, 0, count);
                     }
                     if (System.nanoTime() >= deadline) throw new IOException("Video download timed out");
                 } catch (final IOException exception) {
-                    if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Video download cancelled");
+                    if ((this.cancelled || Thread.currentThread().isInterrupted())) throw new InterruptedException("Video download cancelled");
                     throw exception;
                 } finally {
                     timeout.cancel(false);
@@ -114,7 +134,7 @@ final class VisionMediaCache {
                 Files.deleteIfExists(tempFile);
                 throw new IOException("Incomplete download for " + remoteUri + ": got " + downloadedBytes + " bytes, expected " + downloadedMetadata.contentLength());
             }
-            if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Video download cancelled");
+            if ((this.cancelled || Thread.currentThread().isInterrupted())) throw new InterruptedException("Video download cancelled");
             try {
                 Files.move(tempFile, cacheFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             } catch (final AtomicMoveNotSupportedException exception) {
@@ -125,6 +145,7 @@ final class VisionMediaCache {
                     BUILD_TAG, remoteUri, cacheFile, Files.size(cacheFile), downloadedMetadata);
             return cacheFile.toUri();
         } finally {
+            this.detach();
             Files.deleteIfExists(tempFile);
         }
     }
