@@ -160,7 +160,7 @@ public final class NetworkRegressionTest {
             VisionStreamingProxy.release(slowProxy);
             streaming.body().close();
             download.join(3000);
-            check(!download.isAlive() && downloadOutcome.get() instanceof InterruptedException, "Full download did not cancel promptly");
+            check(!download.isAlive() && downloadOutcome.get() instanceof InterruptedException, "Full download did not cancel promptly: alive=" + download.isAlive() + ", outcome=" + downloadOutcome.get());
             check(slowClosed.await(3, TimeUnit.SECONDS), "Upstream transfers survived cancellation");
             try (var files = Files.list(directory)) {
                 check(files.noneMatch(p -> p.toString().endsWith(".download")), "Cancellation leaked temporary file");
