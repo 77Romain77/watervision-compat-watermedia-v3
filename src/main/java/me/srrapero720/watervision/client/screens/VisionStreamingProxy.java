@@ -19,15 +19,17 @@ import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 final class VisionStreamingProxy {
-    private static final String BUILD_TAG = "streaming-proxy-003";
+    private static final String BUILD_TAG = "streaming-proxy-004";
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
             .connectTimeout(Duration.ofSeconds(10))
             .build();
-    private static final Map<String, URI> ROUTES = new ConcurrentHashMap<>();
+    private static final Map<String, Route> ROUTES = new ConcurrentHashMap<>();
 
     private static ServerSocket serverSocket;
     private static Thread serverThread;
@@ -38,7 +40,7 @@ final class VisionStreamingProxy {
     static URI proxy(final URI remoteUri) throws IOException {
         ensureStarted();
         final String token = UUID.randomUUID().toString().replace("-", "");
-        ROUTES.put(token, remoteUri);
+        ROUTES.put(token, new Route(remoteUri));
         final URI proxyUri = URI.create("http://127.0.0.1:" + port + "/watervision/" + token + extension(remoteUri));
         WaterVision.LOGGER.info("WaterVision streaming proxy route created [{}]: proxyUri={}, remoteUri={}", BUILD_TAG, proxyUri, remoteUri);
         return proxyUri;
@@ -48,6 +50,61 @@ final class VisionStreamingProxy {
         if (uri == null || uri.getHost() == null || uri.getPath() == null) return false;
         final String host = uri.getHost();
         return ("127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host)) && uri.getPath().startsWith("/watervision/");
+    }
+
+    static void release(final URI proxyUri) {
+        if (!isProxyUri(proxyUri)) return;
+        final Route route = ROUTES.remove(token(proxyUri.getPath()));
+        if (route != null) route.close();
+    }
+
+    private static final class Route {
+        private final URI remoteUri;
+        private final Set<Transfer> transfers = new HashSet<>();
+        private boolean closed;
+
+        private Route(final URI remoteUri) { this.remoteUri = remoteUri; }
+
+        synchronized boolean add(final Transfer transfer) {
+            if (this.closed) return false;
+            this.transfers.add(transfer);
+            return true;
+        }
+
+        synchronized void remove(final Transfer transfer) { this.transfers.remove(transfer); }
+
+        synchronized void close() {
+            this.closed = true;
+            for (final Transfer transfer : this.transfers) transfer.close();
+            this.transfers.clear();
+        }
+    }
+
+    private static final class Transfer {
+        private final Socket socket;
+        private final Thread worker = Thread.currentThread();
+        private InputStream body;
+        private boolean closed;
+
+        private Transfer(final Socket socket) { this.socket = socket; }
+
+        synchronized boolean attach(final InputStream body) throws IOException {
+            if (this.closed) {
+                body.close();
+                return false;
+            }
+            this.body = body;
+            return true;
+        }
+
+        synchronized void close() {
+            this.closed = true;
+            this.worker.interrupt();
+            try { this.socket.close(); } catch (final IOException ignored) { }
+            if (this.body != null) {
+                try { this.body.close(); } catch (final IOException ignored) { }
+            }
+        }
     }
 
     private static synchronized void ensureStarted() throws IOException {
@@ -77,6 +134,8 @@ final class VisionStreamingProxy {
     }
 
     private static void handle(final Socket socket) {
+        Route activeRoute = null;
+        final Transfer transfer = new Transfer(socket);
         try (socket) {
             socket.setSoTimeout(30000);
             final InputStream input = socket.getInputStream();
@@ -112,12 +171,14 @@ final class VisionStreamingProxy {
                 return;
             }
 
-            final URI remoteUri = route(path);
-            if (remoteUri == null) {
+            final Route route = ROUTES.get(token(path));
+            if (route == null || !route.add(transfer)) {
                 writeSimpleResponse(output, 404, "Not Found");
                 return;
             }
 
+            activeRoute = route;
+            final URI remoteUri = route.remoteUri;
             final HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(remoteUri)
                     .timeout(Duration.ofSeconds(30))
                     .header("User-Agent", "WaterVision/0.1 streaming-proxy")
@@ -133,13 +194,16 @@ final class VisionStreamingProxy {
 
             final HttpResponse<InputStream> response = HTTP_CLIENT.send(requestBuilder.GET().build(), HttpResponse.BodyHandlers.ofInputStream());
             WaterVision.LOGGER.info("WaterVision streaming proxy GET [{}]: status={}, range={}, remoteUri={}", BUILD_TAG, response.statusCode(), rangeHeader, remoteUri);
-            writeResponseHeaders(output, response.statusCode(), response);
             try (InputStream responseBody = response.body()) {
+                if (!transfer.attach(responseBody)) return;
+                writeResponseHeaders(output, response.statusCode(), response);
                 responseBody.transferTo(output);
             }
             output.flush();
         } catch (final Exception exception) {
-            WaterVision.LOGGER.warn("WaterVision streaming proxy request failed [{}]", BUILD_TAG, exception);
+            if (!Thread.currentThread().isInterrupted()) WaterVision.LOGGER.warn("WaterVision streaming proxy request failed [{}]", BUILD_TAG, exception);
+        } finally {
+            if (activeRoute != null) activeRoute.remove(transfer);
         }
     }
 
@@ -155,19 +219,19 @@ final class VisionStreamingProxy {
         return rawPath.split("\\?", 2)[0];
     }
 
-    private static URI route(final String path) {
+    private static String token(final String path) {
         final String prefix = "/watervision/";
-        if (path == null || !path.startsWith(prefix)) return null;
+        if (path == null || !path.startsWith(prefix)) return "";
         final String fileName = path.substring(prefix.length());
         final int dot = fileName.indexOf('.');
         final String token = dot >= 0 ? fileName.substring(0, dot) : fileName;
-        return ROUTES.get(token);
+        return token;
     }
 
     private static void writeResponseHeaders(final OutputStream output, final int statusCode, final HttpResponse<?> response) throws IOException {
         writeAscii(output, "HTTP/1.1 " + statusCode + " " + reason(statusCode) + "\r\n");
         writeAscii(output, "Connection: close\r\n");
-        writeAscii(output, "Accept-Ranges: bytes\r\n");
+        response.headers().firstValue("Accept-Ranges").ifPresent(value -> writeHeader(output, "Accept-Ranges", value));
         response.headers().firstValue("Content-Type").ifPresent(value -> writeHeader(output, "Content-Type", value));
         response.headers().firstValue("Content-Length").ifPresent(value -> writeHeader(output, "Content-Length", value));
         response.headers().firstValue("Content-Range").ifPresent(value -> writeHeader(output, "Content-Range", value));

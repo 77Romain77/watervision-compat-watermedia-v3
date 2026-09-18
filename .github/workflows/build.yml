@@ -11,6 +11,7 @@ on:
   pull_request:
     branches:
       - 1.20.1
+      - watermedia-3.0.0.23-compat
 
 jobs:
   build:
@@ -26,6 +27,9 @@ jobs:
           distribution: temurin
           java-version: 17
           cache: gradle
+
+      - name: Test cache and streaming proxy
+        run: bash scripts/test-network.sh
 
       - name: Make Gradle executable
         run: chmod +x ./gradlew

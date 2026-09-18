@@ -21,23 +21,14 @@ import org.watermedia.api.media.players.MediaPlayer;
 
 import java.io.IOException;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.Locale;
-import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.Callable;
+import java.util.concurrent.FutureTask;
 
 public class VisionScreen extends Screen {
-    private static final String BUILD_TAG = "cinematic-ui-watermedia-023-streaming-proxy-safe";
+    private static final String BUILD_TAG = "cinematic-ui-watermedia-023-sequential-loading";
     private static final ResourceLocation TEXTURE = ResourceLocation.tryBuild("watervision", "video_texture");
     private static final int TIPS_AUTO_HIDE_TICKS = 200;
     private static final int VOLUME_OVERLAY_TICKS = 20;
@@ -94,9 +85,12 @@ public class VisionScreen extends Screen {
     private boolean skipHolding;
     private int skipHoldTicks;
     private boolean skipTriggered;
-    private boolean cacheFallbackAttempted;
+    private boolean proxyFallbackAttempted;
     private boolean fullDownloadFallbackAttempted;
-    private boolean backgroundCacheDownloadStarted;
+    private final VisionMediaCache mediaCache;
+    private boolean cachedPlayback;
+    private FutureTask<Void> cacheTask;
+    private final long loadingStartedNanos = System.nanoTime();
     private CompletableFuture<URI> cacheDownloadFuture;
 
     public VisionScreen(final URI uri, final int volume, final float speed, final boolean stretch, final float gameFadeDuration, final float videoFadeDuration, final boolean controls, final boolean exit) {
@@ -112,15 +106,43 @@ public class VisionScreen extends Screen {
         this.gameBackground = new FadeBackground(gameFadeDuration);
         this.videoBackground = new FadeBackground(videoFadeDuration);
         this.videoBackground.forceFadeIn();
-        this.mrl = MediaAPI.mrl(this.playbackUri);
+        this.mediaCache = new VisionMediaCache(Minecraft.getInstance().gameDirectory.toPath().resolve("watervision-cache"));
+        if (this.isRemoteHttpUri(uri)) {
+            this.startCacheTask(() -> {
+                try {
+                    final URI cached = this.mediaCache.findCached(uri);
+                    return cached == null ? uri : cached;
+                } catch (final InterruptedException exception) {
+                    throw exception;
+                } catch (final Exception exception) {
+                    WaterVision.LOGGER.warn("WaterVision initial cache check failed; using native streaming for {}", uri, exception);
+                    return uri;
+                }
+            });
+        } else {
+            this.mrl = MediaAPI.mrl(this.playbackUri);
+        }
         Minecraft.getInstance().getSoundManager().pause();
         WaterVision.LOGGER.info("WaterVision screen opened [{}] for {}", BUILD_TAG, this.uri);
         WaterVision.LOGGER.info("WaterVision cinematic volume [{}]: command={} client={} effective={} controls={} exit={}", BUILD_TAG, this.commandVolume, this.clientVolume, this.effectiveVolume(), this.controls, this.exit);
     }
 
     private boolean attemptPlaybackFallback(final String reason) {
+        if (this.cachedPlayback) {
+            this.cachedPlayback = false;
+            this.releasePlayerOnly();
+            this.startCacheTask(() -> {
+                try {
+                    this.mediaCache.invalidate(this.uri);
+                } catch (final IOException exception) {
+                    WaterVision.LOGGER.warn("WaterVision could not delete unreadable cache for {}", this.uri, exception);
+                }
+                return this.uri;
+            });
+            return true;
+        }
         if (VisionStreamingProxy.isProxyUri(this.playbackUri) && this.startFullDownloadFallback(reason)) return true;
-        return this.startCacheOrProxyFallback(reason);
+        return this.startProxyFallback(reason);
     }
 
     private void failBeforePlayer(final String reason, final MRL.Status mrlStatus) {
@@ -174,6 +196,7 @@ public class VisionScreen extends Screen {
     }
 
     private void tryCreatePlayer() {
+        if (this.status == Status.CLOSING_VIDEO || this.status == Status.CLOSING_GAME) return;
         if (this.released || this.cacheDownloadFuture != null || this.videoPlayer != null || this.failedToCreatePlayer) return;
         if (!this.ensureMediaBackendReady()) return;
         if (this.mrl == null) {
@@ -223,8 +246,7 @@ public class VisionScreen extends Screen {
 
         this.videoPlayer = MediaAPI.createPlayer(this.mrl, this::createGfxEngine, this::createSfxEngine);
         if (this.videoPlayer == null) {
-            if (VisionStreamingProxy.isProxyUri(this.playbackUri) && this.startFullDownloadFallback("proxy-create-player-null")) return;
-            if (this.startCacheOrProxyFallback("create-player-null")) return;
+            if (this.attemptPlaybackFallback("create-player-null")) return;
             this.failedToCreatePlayer = true;
             WaterVision.LOGGER.error("WaterMedia failed to create a player [{}] for {}", BUILD_TAG, this.playbackUri);
             this.status = Status.CLOSING_VIDEO;
@@ -293,6 +315,15 @@ public class VisionScreen extends Screen {
     }
 
     private void renderLoadingIndicator(final GuiGraphics graphics) {
+        if (System.nanoTime() - this.loadingStartedNanos >= 15_000_000_000L) {
+            final Component message = Component.literal("Le chargement de la vidéo prend plus de temps que prévu. Cela peut venir de votre connexion ou du serveur vidéo. Veuillez patienter...");
+            final int textWidth = Math.max(40, Math.min(360, this.width - 32));
+            int lineY = this.height / 2;
+            for (final var line : this.font.split(message, textWidth)) {
+                graphics.drawString(this.font, line, (this.width - textWidth) / 2, lineY, 0xDDDDDD);
+                lineY += 11;
+            }
+        }
         final int y = this.height - 28;
         final int startX = this.width - 56;
         final int phase = (WaterVision.getTicks() / 6) % 4;
@@ -416,8 +447,10 @@ public class VisionScreen extends Screen {
 
     @Override
     public void tick() {
-        this.tickCacheFallback();
-        this.tryCreatePlayer();
+        if (this.status != Status.CLOSING_VIDEO && this.status != Status.CLOSING_GAME) {
+            this.tickCacheFallback();
+            this.tryCreatePlayer();
+        }
         if (this.tipsVisible && this.tipsTicksLeft > 0 && --this.tipsTicksLeft <= 0) this.tipsVisible = false;
         if (this.volumeOverlayTicks > 0) this.volumeOverlayTicks--;
         if (this.seekOverlayTicks > 0) this.seekOverlayTicks--;
@@ -430,8 +463,7 @@ public class VisionScreen extends Screen {
             if (this.videoPlayer.error()) {
                 WaterVision.LOGGER.error("WaterVision player entered ERROR before first texture [{}]: wmStatus={}, texture={}, size={}x{}, uri={}, originalUri={}",
                         BUILD_TAG, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.playbackUri, this.uri);
-                if (this.startFullDownloadFallback("proxy-error-before-first-texture")) return;
-                if (this.startCacheOrProxyFallback("player-error-before-first-texture")) return;
+                if (this.attemptPlaybackFallback("player-error-before-first-texture")) return;
                 this.status = Status.CLOSING_VIDEO;
                 return;
             }
@@ -454,7 +486,7 @@ public class VisionScreen extends Screen {
             }
         }
 
-        if (!this.tickDelayedResume()) return;
+        if (this.status != Status.CLOSING_VIDEO && this.status != Status.CLOSING_GAME && !this.tickDelayedResume()) return;
 
         switch (this.status) {
             case OPENING_GAME -> {
@@ -538,22 +570,24 @@ public class VisionScreen extends Screen {
                 BUILD_TAG, this.playerRecreateAttempts, this.videoPlayer.status(), this.videoPlayer.texture(), this.videoPlayer.width(), this.videoPlayer.height(), this.playbackUri);
     }
 
-    private boolean startCacheOrProxyFallback(final String reason) {
-        if (this.cacheFallbackAttempted || !this.isRemoteHttpUri(this.playbackUri) || VisionStreamingProxy.isProxyUri(this.playbackUri)) return false;
-        this.cacheFallbackAttempted = true;
-        WaterVision.LOGGER.warn("WaterVision remote playback failed before first texture [{}], trying cache/proxy fallback: reason={}, uri={}", BUILD_TAG, reason, this.playbackUri);
+    private boolean startProxyFallback(final String reason) {
+        if (this.proxyFallbackAttempted || !this.isRemoteHttpUri(this.playbackUri) || VisionStreamingProxy.isProxyUri(this.playbackUri)) return false;
+        this.proxyFallbackAttempted = true;
+        WaterVision.LOGGER.warn("WaterVision remote playback failed before first texture [{}], trying streaming proxy: reason={}, uri={}", BUILD_TAG, reason, this.playbackUri);
         this.releasePlayerOnly();
         this.failedToCreatePlayer = false;
         this.status = Status.OPENING_GAME;
         this.resetPlayerStateForNewMrl();
-        final URI remoteUri = this.uri;
-        this.cacheDownloadFuture = CompletableFuture.supplyAsync(() -> {
-            try {
-                return this.resolveCacheOrStreamingProxy(remoteUri);
-            } catch (final Exception exception) {
-                throw new CompletionException(exception);
-            }
-        });
+        try {
+            this.playbackUri = VisionStreamingProxy.proxy(this.uri);
+            this.mrl = MediaAPI.mrl(this.playbackUri);
+            this.mrlWaitTicks = 0;
+            this.mrlReloadAttempted = false;
+        } catch (final IOException exception) {
+            WaterVision.LOGGER.warn("WaterVision proxy creation failed; downloading local copy", exception);
+            this.fullDownloadFallbackAttempted = true;
+            this.startCacheTask(() -> this.mediaCache.downloadRemoteToCache(this.uri));
+        }
         return true;
     }
 
@@ -565,15 +599,34 @@ public class VisionScreen extends Screen {
         this.failedToCreatePlayer = false;
         this.status = Status.OPENING_GAME;
         this.resetPlayerStateForNewMrl();
-        final URI remoteUri = this.uri;
-        this.cacheDownloadFuture = CompletableFuture.supplyAsync(() -> {
-            try {
-                return this.downloadRemoteToCache(remoteUri);
-            } catch (final Exception exception) {
-                throw new CompletionException(exception);
-            }
-        });
+        VisionStreamingProxy.release(this.playbackUri);
+        this.startCacheTask(() -> this.mediaCache.downloadRemoteToCache(this.uri));
         return true;
+    }
+
+    private void startCacheTask(final Callable<URI> operation) {
+        // FutureTask cancellation interrupts HttpClient.send; CompletableFuture.cancel alone does not.
+        final CompletableFuture<URI> result = new CompletableFuture<>();
+        this.cacheDownloadFuture = result;
+        this.cacheTask = new FutureTask<>(() -> {
+            try {
+                result.complete(operation.call());
+            } catch (final Exception exception) {
+                result.completeExceptionally(exception);
+            }
+            return null;
+        });
+        final Thread worker = new Thread(this.cacheTask, "WaterVision-Cache");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private void cancelLoading() {
+        this.mediaCache.cancel();
+        if (this.cacheTask != null) this.cacheTask.cancel(true);
+        this.cacheTask = null;
+        this.cacheDownloadFuture = null;
+        VisionStreamingProxy.release(this.playbackUri);
     }
 
     private void tickCacheFallback() {
@@ -583,6 +636,7 @@ public class VisionScreen extends Screen {
         try {
             final URI fallbackUri = completedFuture.join();
             this.playbackUri = fallbackUri;
+            this.cachedPlayback = !this.fullDownloadFallbackAttempted && "file".equalsIgnoreCase(fallbackUri.getScheme()) && this.isRemoteHttpUri(this.uri);
             this.mrl = MediaAPI.mrl(this.playbackUri);
             this.mrlWaitTicks = 0;
             this.mrlReloadAttempted = false;
@@ -595,179 +649,6 @@ public class VisionScreen extends Screen {
             this.failedToCreatePlayer = true;
             this.status = Status.CLOSING_VIDEO;
         }
-    }
-
-    private URI resolveCacheOrStreamingProxy(final URI remoteUri) throws IOException, InterruptedException, NoSuchAlgorithmException {
-        final Path cacheDirectory = Minecraft.getInstance().gameDirectory.toPath().resolve("watervision-cache");
-        Files.createDirectories(cacheDirectory);
-        final Path cacheFile = this.cacheFile(cacheDirectory, remoteUri);
-        final Path metadataFile = this.metadataFile(cacheDirectory, remoteUri);
-        final CacheMetadata remoteMetadata = this.fetchRemoteMetadata(remoteUri);
-
-        if (Files.isRegularFile(cacheFile) && Files.size(cacheFile) > 0L) {
-            final long cachedSize = Files.size(cacheFile);
-            final CacheMetadata cachedMetadata = this.readCacheMetadata(metadataFile);
-            if (remoteMetadata == null) {
-                WaterVision.LOGGER.warn("WaterVision cache hit without remote validation [{}]: uri={}, file={}, bytes={}", BUILD_TAG, remoteUri, cacheFile, cachedSize);
-                return cacheFile.toUri();
-            }
-            if (cachedMetadata != null && cachedMetadata.matches(remoteMetadata, cachedSize)) {
-                WaterVision.LOGGER.info("WaterVision cache hit validated [{}]: uri={}, file={}, metadata={}", BUILD_TAG, remoteUri, cacheFile, remoteMetadata);
-                return cacheFile.toUri();
-            }
-            WaterVision.LOGGER.info("WaterVision cache stale [{}], switching to streaming proxy: uri={}, file={}, cachedMetadata={}, remoteMetadata={}, cachedBytes={}",
-                    BUILD_TAG, remoteUri, cacheFile, cachedMetadata, remoteMetadata, cachedSize);
-            Files.deleteIfExists(cacheFile);
-            Files.deleteIfExists(metadataFile);
-        }
-
-        final URI proxyUri = VisionStreamingProxy.proxy(remoteUri);
-        this.startBackgroundCacheDownload(remoteUri);
-        WaterVision.LOGGER.info("WaterVision streaming proxy fallback ready [{}]: originalUri={}, proxyUri={}", BUILD_TAG, remoteUri, proxyUri);
-        return proxyUri;
-    }
-
-    private void startBackgroundCacheDownload(final URI remoteUri) {
-        if (this.backgroundCacheDownloadStarted) return;
-        this.backgroundCacheDownloadStarted = true;
-        CompletableFuture.runAsync(() -> {
-            try {
-                final URI localUri = this.downloadRemoteToCache(remoteUri);
-                WaterVision.LOGGER.info("WaterVision background cache download completed [{}]: originalUri={}, localUri={}", BUILD_TAG, remoteUri, localUri);
-            } catch (final Exception exception) {
-                WaterVision.LOGGER.warn("WaterVision background cache download failed [{}]: originalUri={}", BUILD_TAG, remoteUri, exception);
-            }
-        });
-    }
-
-    private URI downloadRemoteToCache(final URI remoteUri) throws IOException, InterruptedException, NoSuchAlgorithmException {
-        final Path cacheDirectory = Minecraft.getInstance().gameDirectory.toPath().resolve("watervision-cache");
-        Files.createDirectories(cacheDirectory);
-        final Path cacheFile = this.cacheFile(cacheDirectory, remoteUri);
-        final Path metadataFile = this.metadataFile(cacheDirectory, remoteUri);
-        final CacheMetadata remoteMetadata = this.fetchRemoteMetadata(remoteUri);
-
-        if (Files.isRegularFile(cacheFile) && Files.size(cacheFile) > 0L) {
-            final long cachedSize = Files.size(cacheFile);
-            final CacheMetadata cachedMetadata = this.readCacheMetadata(metadataFile);
-            if (remoteMetadata == null) return cacheFile.toUri();
-            if (cachedMetadata != null && cachedMetadata.matches(remoteMetadata, cachedSize)) return cacheFile.toUri();
-            Files.deleteIfExists(cacheFile);
-            Files.deleteIfExists(metadataFile);
-        }
-
-        final Path tempFile = cacheDirectory.resolve(cacheFile.getFileName().toString() + "." + System.nanoTime() + ".download");
-        Files.deleteIfExists(tempFile);
-        WaterVision.LOGGER.info("WaterVision downloading video to cache [{}]: uri={}, file={}", BUILD_TAG, remoteUri, cacheFile);
-        final HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build();
-        final HttpRequest request = HttpRequest.newBuilder(remoteUri)
-                .GET()
-                .header("User-Agent", "WaterVision/0.1 cache-fallback")
-                .header("Accept", "video/mp4,video/*,*/*")
-                .build();
-        final HttpResponse<Path> response = client.send(request, HttpResponse.BodyHandlers.ofFile(tempFile));
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            Files.deleteIfExists(tempFile);
-            throw new IOException("HTTP " + response.statusCode() + " while downloading " + remoteUri);
-        }
-        final CacheMetadata downloadedMetadata = remoteMetadata != null ? remoteMetadata : this.metadataFromResponse(response);
-        final long downloadedBytes = Files.size(tempFile);
-        if (downloadedMetadata.contentLength() >= 0L && downloadedBytes != downloadedMetadata.contentLength()) {
-            Files.deleteIfExists(tempFile);
-            throw new IOException("Incomplete download for " + remoteUri + ": got " + downloadedBytes + " bytes, expected " + downloadedMetadata.contentLength());
-        }
-        Files.move(tempFile, cacheFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        this.writeCacheMetadata(metadataFile, remoteUri, downloadedMetadata);
-        WaterVision.LOGGER.info("WaterVision cache download completed [{}]: uri={}, file={}, bytes={}, metadata={}",
-                BUILD_TAG, remoteUri, cacheFile, Files.size(cacheFile), downloadedMetadata);
-        return cacheFile.toUri();
-    }
-
-    private Path cacheFile(final Path cacheDirectory, final URI remoteUri) throws NoSuchAlgorithmException {
-        return cacheDirectory.resolve("media-" + this.sha256(remoteUri.toString()) + this.safeExtension(remoteUri));
-    }
-
-    private Path metadataFile(final Path cacheDirectory, final URI remoteUri) throws NoSuchAlgorithmException {
-        return cacheDirectory.resolve(this.cacheFile(cacheDirectory, remoteUri).getFileName().toString() + ".meta");
-    }
-
-    private CacheMetadata fetchRemoteMetadata(final URI remoteUri) {
-        try {
-            final HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build();
-            final HttpRequest request = HttpRequest.newBuilder(remoteUri)
-                    .method("HEAD", HttpRequest.BodyPublishers.noBody())
-                    .header("User-Agent", "WaterVision/0.1 cache-validator")
-                    .header("Accept", "video/mp4,video/*,*/*")
-                    .build();
-            final HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                WaterVision.LOGGER.warn("WaterVision remote metadata check failed [{}]: status={}, uri={}", BUILD_TAG, response.statusCode(), remoteUri);
-                return null;
-            }
-            return this.metadataFromResponse(response);
-        } catch (final Exception exception) {
-            WaterVision.LOGGER.warn("WaterVision remote metadata check failed [{}]: uri={}", BUILD_TAG, remoteUri, exception);
-            return null;
-        }
-    }
-
-    private CacheMetadata metadataFromResponse(final HttpResponse<?> response) {
-        final String etag = response.headers().firstValue("ETag").orElse("");
-        final String lastModified = response.headers().firstValue("Last-Modified").orElse("");
-        final long contentLength = this.parseLong(response.headers().firstValue("Content-Length").orElse("-1"), -1L);
-        return new CacheMetadata(etag, lastModified, contentLength);
-    }
-
-    private CacheMetadata readCacheMetadata(final Path metadataFile) {
-        if (!Files.isRegularFile(metadataFile)) return null;
-        final Properties properties = new Properties();
-        try (final var input = Files.newInputStream(metadataFile)) {
-            properties.load(input);
-            final String etag = properties.getProperty("etag", "");
-            final String lastModified = properties.getProperty("lastModified", "");
-            final long contentLength = this.parseLong(properties.getProperty("contentLength", "-1"), -1L);
-            return new CacheMetadata(etag, lastModified, contentLength);
-        } catch (final IOException exception) {
-            WaterVision.LOGGER.warn("WaterVision cache metadata read failed [{}]: file={}", BUILD_TAG, metadataFile, exception);
-            return null;
-        }
-    }
-
-    private void writeCacheMetadata(final Path metadataFile, final URI remoteUri, final CacheMetadata metadata) throws IOException {
-        final Properties properties = new Properties();
-        properties.setProperty("url", remoteUri.toString());
-        if (metadata != null) {
-            properties.setProperty("etag", metadata.etag());
-            properties.setProperty("lastModified", metadata.lastModified());
-            properties.setProperty("contentLength", Long.toString(metadata.contentLength()));
-        }
-        try (final var output = Files.newOutputStream(metadataFile)) {
-            properties.store(output, "WaterVision cache metadata");
-        }
-    }
-
-    private long parseLong(final String value, final long fallback) {
-        try {
-            return Long.parseLong(value.trim());
-        } catch (final Exception ignored) {
-            return fallback;
-        }
-    }
-
-    private String safeExtension(final URI remoteUri) {
-        final String path = remoteUri.getPath();
-        if (path == null) return ".mp4";
-        final int slash = path.lastIndexOf('/');
-        final int dot = path.lastIndexOf('.');
-        if (dot <= slash || dot < 0 || dot >= path.length() - 1) return ".mp4";
-        final String extension = path.substring(dot).toLowerCase(Locale.ROOT);
-        if (extension.length() > 12 || !extension.matches("\\.[a-z0-9]+")) return ".mp4";
-        return extension;
-    }
-
-    private String sha256(final String value) throws NoSuchAlgorithmException {
-        final MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
     }
 
     private boolean isRemoteHttpUri(final URI uri) {
@@ -811,6 +692,7 @@ public class VisionScreen extends Screen {
     }
 
     private void requestCloseVideo() {
+        this.cancelLoading();
         if (this.videoPlayer != null && !this.videoPlayer.stopped() && !this.videoPlayer.ended() && !this.videoPlayer.error()) {
             final boolean stopped = this.videoPlayer.stop();
             if (!stopped && !this.videoPlayer.stopped()) {
@@ -945,26 +827,27 @@ public class VisionScreen extends Screen {
         super.onClose();
     }
 
+    @Override
+    public void removed() {
+        // Screen replacement/disconnection may bypass onClose and its fade-out.
+        // Keep the existing audio lifecycle hooks; only release this screen's work.
+        if (!this.released) {
+            this.cancelLoading();
+            this.releasePlayerOnly();
+            this.released = true;
+        }
+        super.removed();
+    }
+
     private void closeAndRelease() {
         if (this.released) return;
-        if (this.cacheDownloadFuture != null && !this.cacheDownloadFuture.isDone()) this.cacheDownloadFuture.cancel(true);
-        this.cacheDownloadFuture = null;
+        this.cancelLoading();
         Minecraft.getInstance().getSoundManager().resume();
         this.releasePlayerOnly();
         this.released = true;
     }
 
     public record AspectRatioDimension(int x, int y, int width, int height) { }
-
-    private record CacheMetadata(String etag, String lastModified, long contentLength) {
-        private boolean matches(final CacheMetadata remote, final long cachedFileSize) {
-            if (remote == null) return false;
-            if (remote.contentLength() >= 0L && cachedFileSize != remote.contentLength()) return false;
-            if (!remote.etag().isBlank()) return remote.etag().equals(this.etag());
-            if (!remote.lastModified().isBlank()) return remote.lastModified().equals(this.lastModified());
-            return remote.contentLength() >= 0L && cachedFileSize == remote.contentLength();
-        }
-    }
 
     public enum Status {
         OPENING_GAME,
