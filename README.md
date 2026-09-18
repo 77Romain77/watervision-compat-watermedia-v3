@@ -32,7 +32,7 @@ WaterMedia 3.0.0.22 and 3.0.0.23 introduced binary-breaking API changes. Pinning
 Expected fullscreen cinematic build tag:
 
 ```text
-[cinematic-ui-watermedia-023-streaming-proxy-safe]
+[cinematic-ui-watermedia-023-sequential-loading]
 ```
 
 Expected overlay build tag:
@@ -44,7 +44,7 @@ Expected overlay build tag:
 Expected proxy build tag:
 
 ```text
-[streaming-proxy-003]
+[streaming-proxy-004]
 ```
 
 ## WaterMedia 3.0.0.23 migration
@@ -68,12 +68,11 @@ WaterMedia now owns the OpenGL state handling used by its video engine. WaterVis
 WaterVision keeps the existing fallback chain for direct remote videos:
 
 ```text
-1. Try the original remote URL.
-2. If playback fails before the first frame, inspect the local cache.
-3. Play a valid cached file immediately when available.
-4. Otherwise start the local 127.0.0.1 streaming proxy.
-5. Download the full video into the persistent cache in the background.
-6. If proxy playback also fails, wait for the complete local file and retry it.
+1. Check for a valid local cache before opening any remote player (validation capped at 5 seconds).
+2. If no usable cache exists, try native WaterMedia streaming from the original URL.
+3. If native playback fails before the first frame, use the local 127.0.0.1 streaming proxy.
+4. Only if proxy playback fails, stop its transfers and download one complete local file.
+5. Play the complete cached file. An unreadable initial cache falls back to native streaming.
 ```
 
 The cache is stored in:
@@ -88,7 +87,18 @@ Cached files are validated with the available remote metadata:
 - `Last-Modified`
 - `Content-Length`
 
-Incomplete downloads are rejected.
+Incomplete downloads are rejected and temporary files are cleaned up on failure/cancellation.
+There is no background full download during native or proxy streaming. Consequently,
+successful streaming does not populate WaterVision's persistent cache; the complete-download
+fallback does. Skipping/closing a cinematic interrupts cache requests and closes proxy transfers.
+The proxy forwards the upstream `Accept-Ranges` header instead of claiming range support.
+
+After 15 seconds without a first image, a wrapped French loading message explains that the
+connection or video host may be slow. The timer spans retries and does not change their thresholds.
+Cache HTTP connections are bounded to 5 seconds and complete downloads to 10 minutes.
+
+Run `bash scripts/test-network.sh` with Java 17 for the local HTTP regression tests.
+Full rendering and native WaterMedia behavior still require in-game testing.
 
 ### Playback controls
 
@@ -180,10 +190,10 @@ Before deploying this branch, test:
 Useful successful log entries include:
 
 ```text
-WaterVision player created [cinematic-ui-watermedia-023-streaming-proxy-safe]
-WaterVision player resume requested [cinematic-ui-watermedia-023-streaming-proxy-safe]
-WaterVision first frame ready [cinematic-ui-watermedia-023-streaming-proxy-safe]
-WaterVision first video texture rendered [cinematic-ui-watermedia-023-streaming-proxy-safe]
+WaterVision player created [cinematic-ui-watermedia-023-sequential-loading]
+WaterVision player resume requested [cinematic-ui-watermedia-023-sequential-loading]
+WaterVision first frame ready [cinematic-ui-watermedia-023-sequential-loading]
+WaterVision first video texture rendered [cinematic-ui-watermedia-023-sequential-loading]
 WaterVision RegionMusic compatibility enabled
 WaterVision RegionMusic pause: active=true
 WaterVision RegionMusic pause: active=false
