@@ -2,6 +2,8 @@ package me.srrapero720.watervision.client.screens;
 
 import me.srrapero720.watervision.WaterVision;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -17,10 +19,18 @@ import java.time.Duration;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Properties;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /** Disk cache used only before streaming or after streaming has been stopped. */
 final class VisionMediaCache {
     private static final String BUILD_TAG = "sequential-cache-001";
+    private static final ScheduledExecutorService TIMEOUTS = Executors.newSingleThreadScheduledExecutor(task -> {
+        final Thread thread = new Thread(task, "WaterVision-CacheTimeout");
+        thread.setDaemon(true);
+        return thread;
+    });
     private final Path directory;
 
     VisionMediaCache(final Path directory) {
@@ -71,11 +81,32 @@ final class VisionMediaCache {
                 .header("User-Agent", "WaterVision/0.1 cache-fallback")
                 .header("Accept", "video/mp4,video/*,*/*")
                 .build();
+        final long deadline = System.nanoTime() + TimeUnit.MINUTES.toNanos(10);
         try {
-            final HttpResponse<Path> response = client.send(request, HttpResponse.BodyHandlers.ofFile(tempFile));
-            if (response.statusCode() != 200) {
-                Files.deleteIfExists(tempFile);
-                throw new IOException("HTTP " + response.statusCode() + " while downloading " + remoteUri);
+            final HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            // Own the file stream on this worker. ofFile can create/write the file after
+            // send() has been interrupted, racing with cleanup on cancellation.
+            try (InputStream input = response.body()) {
+                if (response.statusCode() != 200) {
+                    throw new IOException("HTTP " + response.statusCode() + " while downloading " + remoteUri);
+                }
+                final var timeout = TIMEOUTS.schedule(() -> {
+                    try { input.close(); } catch (final IOException ignored) { }
+                }, Math.max(0L, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+                try (OutputStream output = Files.newOutputStream(tempFile)) {
+                    final byte[] buffer = new byte[64 * 1024];
+                    int count;
+                    while ((count = input.read(buffer)) != -1) {
+                        if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Video download cancelled");
+                        output.write(buffer, 0, count);
+                    }
+                    if (System.nanoTime() >= deadline) throw new IOException("Video download timed out");
+                } catch (final IOException exception) {
+                    if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Video download cancelled");
+                    throw exception;
+                } finally {
+                    timeout.cancel(false);
+                }
             }
             final CacheMetadata downloadedMetadata = this.metadataFromResponse(response);
             final long downloadedBytes = Files.size(tempFile);
